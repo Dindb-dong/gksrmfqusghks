@@ -8,6 +8,7 @@ public enum InputSurface: String, Equatable, Sendable {
   case passwordManager
   case remoteDesktop
   case secureTextField
+  case unsupported
 
   public var prohibitsAutomaticCorrection: Bool {
     self != .standardText

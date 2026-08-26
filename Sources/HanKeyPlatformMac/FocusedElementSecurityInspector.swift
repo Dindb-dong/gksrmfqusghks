@@ -1,4 +1,6 @@
+import AppKit
 import ApplicationServices
+import HanKeyCore
 
 public enum FocusedElementSecurityState: Equatable, Sendable {
   case editable
@@ -10,10 +12,19 @@ public enum FocusedElementSecurityState: Equatable, Sendable {
 public struct AccessibilityElementDescriptor: Equatable, Sendable {
   public let role: String?
   public let subrole: String?
+  public let identifier: String?
+  public let roleDescription: String?
 
-  public init(role: String?, subrole: String?) {
+  public init(
+    role: String?,
+    subrole: String?,
+    identifier: String? = nil,
+    roleDescription: String? = nil
+  ) {
     self.role = role
     self.subrole = subrole
+    self.identifier = identifier
+    self.roleDescription = roleDescription
   }
 }
 
@@ -30,10 +41,16 @@ public struct FocusedElementIdentity: Equatable, Sendable {
 public struct FocusedElementContext: Equatable, Sendable {
   public let state: FocusedElementSecurityState
   public let identity: FocusedElementIdentity?
+  public let surface: InputSurface
 
-  public init(state: FocusedElementSecurityState, identity: FocusedElementIdentity?) {
+  public init(
+    state: FocusedElementSecurityState,
+    identity: FocusedElementIdentity?,
+    surface: InputSurface
+  ) {
     self.state = state
     self.identity = identity
+    self.surface = surface
   }
 }
 
@@ -53,7 +70,7 @@ public enum FocusedElementSecurityInspector {
       ) == .success,
       let focusedValue
     else {
-      return FocusedElementContext(state: .unavailable, identity: nil)
+      return FocusedElementContext(state: .unavailable, identity: nil, surface: .unsupported)
     }
 
     let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
@@ -61,12 +78,13 @@ public enum FocusedElementSecurityInspector {
   }
 
   static func context(for element: AXUIElement) -> FocusedElementContext {
-    let state = classify(
-      AccessibilityElementDescriptor(
-        role: stringAttribute(kAXRoleAttribute as CFString, element: element),
-        subrole: stringAttribute(kAXSubroleAttribute as CFString, element: element)
-      )
+    let descriptor = AccessibilityElementDescriptor(
+      role: stringAttribute(kAXRoleAttribute as CFString, element: element),
+      subrole: stringAttribute(kAXSubroleAttribute as CFString, element: element),
+      identifier: stringAttribute(kAXIdentifierAttribute as CFString, element: element),
+      roleDescription: stringAttribute(kAXRoleDescriptionAttribute as CFString, element: element)
     )
+    let state = classify(descriptor)
     var processID: pid_t = 0
     let identity: FocusedElementIdentity?
     if AXUIElementGetPid(element, &processID) == .success {
@@ -77,7 +95,15 @@ public enum FocusedElementSecurityInspector {
     } else {
       identity = nil
     }
-    return FocusedElementContext(state: state, identity: identity)
+    let bundleIdentifier = identity.flatMap {
+      NSRunningApplication(processIdentifier: $0.processID)?.bundleIdentifier
+    }
+    let surface = InputSurfaceInspector.classify(
+      bundleIdentifier: bundleIdentifier,
+      descriptor: descriptor,
+      securityState: state
+    )
+    return FocusedElementContext(state: state, identity: identity, surface: surface)
   }
 
   public static func classify(

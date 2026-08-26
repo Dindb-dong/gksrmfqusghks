@@ -12,7 +12,7 @@ final class TokenSafetyClassifierTests: XCTestCase {
   func testProtectedSurfacesAlwaysFailClosed() {
     for surface in [
       InputSurface.browserAddressBar, .terminal, .ide, .passwordManager, .remoteDesktop,
-      .secureTextField,
+      .secureTextField, .unsupported,
     ] {
       XCTAssertEqual(
         classifier.classify(token: "gksrmffh", surface: surface),

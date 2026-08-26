@@ -119,9 +119,18 @@ public final class InputObservationRuntime {
 
   @discardableResult
   private func refreshProtection(at timestamp: UInt64) -> Bool {
-    let secureInput = IsSecureEventInputEnabled()
+    let permissions = PlatformCapabilities.currentPermissionSnapshot()
+    guard permissions.hasRequiredPermissions else {
+      _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
+      focusTracker.reset()
+      currentFocusIdentity = nil
+      transition(to: .permissionRequired)
+      return false
+    }
+    let secureInput = permissions.isSecureInputEnabled
     let focusedContext = FocusedElementSecurityInspector.currentContext()
-    let mustProtect = secureInput || focusedContext.state == .secure
+    let mustProtect =
+      secureInput || focusedContext.state == .secure || focusedContext.surface != .standardText
 
     if mustProtect {
       _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
