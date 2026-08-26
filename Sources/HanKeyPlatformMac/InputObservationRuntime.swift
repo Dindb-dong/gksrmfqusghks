@@ -24,7 +24,7 @@ public final class InputObservationRuntime {
   private var state: InputObservationState = .stopped
   private var focusTracker = FocusIdentityTracker()
   private lazy var eventTap = GlobalInputEventTap { [weak self] observation in
-    Task { @MainActor [weak self] in
+    MainActor.assumeIsolated {
       self?.receive(observation)
     }
   }
