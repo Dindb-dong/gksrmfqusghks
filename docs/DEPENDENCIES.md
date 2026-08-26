@@ -8,9 +8,9 @@
 |---|---|---|---:|---|
 | Swift Standard Library | Apple | language runtime | platform/toolchain managed | Apple toolchain terms |
 | SwiftUI, AppKit | Apple | app and settings UI | system frameworks | not redistributed separately |
-| CoreGraphics | Apple | event permission and future event tap | system framework | not redistributed separately |
-| ApplicationServices | Apple | Accessibility trust and future AX access | system framework | not redistributed separately |
-| Carbon/HIToolbox | Apple | Secure Input and future input-source services | system framework | not redistributed separately |
+| CoreGraphics | Apple | event permission, session event tap, synthetic Unicode events | system framework | not redistributed separately |
+| ApplicationServices | Apple | Accessibility trust, focus/range validation | system framework | not redistributed separately |
+| Carbon/HIToolbox | Apple | Secure Input, input-source selection, global shortcuts | system framework | not redistributed separately |
 
 ## Build and CI
 
