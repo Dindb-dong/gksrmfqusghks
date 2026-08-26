@@ -12,7 +12,11 @@ public enum InputObservationState: String, Equatable, Sendable {
 
 public enum InputObservationRuntimeEvent: Equatable, Sendable {
   case stateChanged(InputObservationState)
-  case wordCompleted(BufferedWord, boundary: WordBoundary)
+  case wordCompleted(
+    BufferedWord,
+    boundary: WordBoundary,
+    focusIdentity: FocusedElementIdentity
+  )
 }
 
 @MainActor
@@ -23,6 +27,7 @@ public final class InputObservationRuntime {
   private var buffer: WordBuffer
   private var state: InputObservationState = .stopped
   private var focusTracker = FocusIdentityTracker()
+  private var currentFocusIdentity: FocusedElementIdentity?
   private lazy var eventTap = GlobalInputEventTap { [weak self] observation in
     MainActor.assumeIsolated {
       self?.receive(observation)
@@ -69,6 +74,7 @@ public final class InputObservationRuntime {
     contextObserver.stop()
     _ = buffer.handle(.invalidate(.stopped), at: currentTimestamp())
     focusTracker.reset()
+    currentFocusIdentity = nil
     transition(to: .stopped)
   }
 
@@ -91,8 +97,14 @@ public final class InputObservationRuntime {
       transition(to: .observing)
     case .buffer(let bufferObservation, _):
       let action = buffer.handle(bufferObservation, at: timestamp)
-      if case .completed(let word, let boundary) = action {
-        handler(.wordCompleted(word, boundary: boundary))
+      if case .completed(let word, let boundary) = action, let currentFocusIdentity {
+        handler(
+          .wordCompleted(
+            word,
+            boundary: boundary,
+            focusIdentity: currentFocusIdentity
+          )
+        )
       }
     }
   }
@@ -114,6 +126,7 @@ public final class InputObservationRuntime {
     if mustProtect {
       _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
       focusTracker.reset()
+      currentFocusIdentity = nil
       transition(to: .protected)
       return false
     }
@@ -124,12 +137,14 @@ public final class InputObservationRuntime {
     guard focusedContext.state == .editable, let identity = focusedContext.identity else {
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
       focusTracker.reset()
+      currentFocusIdentity = nil
       transition(to: .observing)
       return false
     }
     if focusTracker.update(identity) {
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
     }
+    currentFocusIdentity = identity
     transition(to: .observing)
     return true
   }
