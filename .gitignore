@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+DerivedData/
+dist/
+artifacts/
+*.xcarchive
+*.dmg
+.swiftpm/
+.worktrees/
+*.profraw
+*.profdata
