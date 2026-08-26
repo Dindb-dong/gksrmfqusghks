@@ -27,3 +27,12 @@
 - macOS 또는 앱 업데이트마다 smoke matrix를 갱신합니다.
 - 실패 시 클립보드를 몰래 덮어쓰지 않습니다.
 - 보호·비호환 상태는 메뉴 막대에서 사용자가 확인할 수 있어야 합니다.
+
+## F08 automated evidence
+
+- Native editor, browser page/address chrome, terminal, IDE, password manager, remote desktop, secure, and unknown surfaces have deterministic bundle/AX classification tests.
+- Unknown bundle or AX context fails closed; browser address signals are protected while ordinary page text areas remain eligible.
+- Sleep, wake, session lock/unlock, and display sleep/wake purge the current word buffer.
+- The adversarial scenario matrix and exact residual TCC gate are recorded in `docs/qa/f08-ultraqa.md`.
+
+Automated classification is not a claim that every app release has been live-tested. The release candidate must repeat the real-app matrix after the user explicitly grants macOS Input Monitoring and Accessibility consent.
