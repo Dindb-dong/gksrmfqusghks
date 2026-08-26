@@ -1,0 +1,148 @@
+import Carbon.HIToolbox
+import Foundation
+import HanKeyCore
+
+public enum InputObservationState: String, Equatable, Sendable {
+  case stopped
+  case observing
+  case protected
+  case permissionRequired
+  case tapUnavailable
+}
+
+public enum InputObservationRuntimeEvent: Equatable, Sendable {
+  case stateChanged(InputObservationState)
+  case wordCompleted(BufferedWord, boundary: WordBoundary)
+}
+
+@MainActor
+public final class InputObservationRuntime {
+  public typealias Handler = @MainActor @Sendable (InputObservationRuntimeEvent) -> Void
+
+  private let handler: Handler
+  private var buffer: WordBuffer
+  private var state: InputObservationState = .stopped
+  private var focusTracker = FocusIdentityTracker()
+  private lazy var eventTap = GlobalInputEventTap { [weak self] observation in
+    Task { @MainActor [weak self] in
+      self?.receive(observation)
+    }
+  }
+  private lazy var contextObserver = ContextInvalidationObserver { [weak self] reason in
+    Task { @MainActor [weak self] in
+      self?.invalidate(reason)
+    }
+  }
+
+  public init(
+    buffer: WordBuffer = WordBuffer(),
+    handler: @escaping Handler
+  ) {
+    self.buffer = buffer
+    self.handler = handler
+  }
+
+  @discardableResult
+  public func start() -> Bool {
+    let permissions = PlatformCapabilities.currentPermissionSnapshot()
+    guard permissions.hasRequiredPermissions else {
+      transition(to: .permissionRequired)
+      return false
+    }
+
+    contextObserver.start()
+    guard eventTap.start() else {
+      contextObserver.stop()
+      transition(to: .tapUnavailable)
+      return false
+    }
+
+    refreshProtection(at: currentTimestamp())
+    if state != .protected {
+      transition(to: .observing)
+    }
+    return true
+  }
+
+  public func stop() {
+    eventTap.stop()
+    contextObserver.stop()
+    _ = buffer.handle(.invalidate(.stopped), at: currentTimestamp())
+    focusTracker.reset()
+    transition(to: .stopped)
+  }
+
+  private func receive(_ observation: GlobalInputObservation) {
+    let timestamp: UInt64
+    switch observation {
+    case .tapRecovered:
+      timestamp = currentTimestamp()
+      _ = buffer.handle(.invalidate(.unknownKey), at: timestamp)
+    case .buffer(_, let eventTimestamp):
+      timestamp = eventTimestamp
+    }
+
+    guard refreshProtection(at: timestamp) else {
+      return
+    }
+
+    switch observation {
+    case .tapRecovered:
+      transition(to: .observing)
+    case .buffer(let bufferObservation, _):
+      let action = buffer.handle(bufferObservation, at: timestamp)
+      if case .completed(let word, let boundary) = action {
+        handler(.wordCompleted(word, boundary: boundary))
+      }
+    }
+  }
+
+  private func invalidate(_ reason: BufferInvalidationReason) {
+    let timestamp = currentTimestamp()
+    guard refreshProtection(at: timestamp) else {
+      return
+    }
+    _ = buffer.handle(.invalidate(reason), at: timestamp)
+  }
+
+  @discardableResult
+  private func refreshProtection(at timestamp: UInt64) -> Bool {
+    let secureInput = IsSecureEventInputEnabled()
+    let focusedContext = FocusedElementSecurityInspector.currentContext()
+    let mustProtect = secureInput || focusedContext.state == .secure
+
+    if mustProtect {
+      _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
+      focusTracker.reset()
+      transition(to: .protected)
+      return false
+    }
+
+    if buffer.isProtected {
+      _ = buffer.handle(.protectionChanged(isProtected: false), at: timestamp)
+    }
+    guard focusedContext.state == .editable, let identity = focusedContext.identity else {
+      _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
+      focusTracker.reset()
+      transition(to: .observing)
+      return false
+    }
+    if focusTracker.update(identity) {
+      _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
+    }
+    transition(to: .observing)
+    return true
+  }
+
+  private func transition(to newState: InputObservationState) {
+    guard state != newState else {
+      return
+    }
+    state = newState
+    handler(.stateChanged(newState))
+  }
+
+  private func currentTimestamp() -> UInt64 {
+    DispatchTime.now().uptimeNanoseconds
+  }
+}

@@ -22,7 +22,15 @@ struct HanKeyApplication: App {
 @Observable
 final class AppModel {
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
-  var isCorrectionEnabled = false
+  private(set) var isCorrectionEnabled = false
+  private(set) var observationState: InputObservationState = .stopped
+  @ObservationIgnored private var observationRuntime: InputObservationRuntime?
+
+  init() {
+    observationRuntime = InputObservationRuntime { [weak self] event in
+      self?.handleRuntimeEvent(event)
+    }
+  }
 
   var menuBarSymbol: String {
     if permissions.isSecureInputEnabled {
@@ -35,7 +43,7 @@ final class AppModel {
   }
 
   var statusTitle: String {
-    if permissions.isSecureInputEnabled {
+    if permissions.isSecureInputEnabled || observationState == .protected {
       return "보안 입력 보호 중"
     }
     if !permissions.canMonitorInput || !permissions.isAccessibilityTrusted {
@@ -47,6 +55,44 @@ final class AppModel {
   func refreshPermissions() {
     permissions = PlatformCapabilities.currentPermissionSnapshot()
   }
+
+  func setCorrectionEnabled(_ enabled: Bool) {
+    guard enabled != isCorrectionEnabled else {
+      return
+    }
+    if enabled {
+      refreshPermissions()
+      guard observationRuntime?.start() == true else {
+        isCorrectionEnabled = false
+        return
+      }
+      isCorrectionEnabled = true
+    } else {
+      observationRuntime?.stop()
+      isCorrectionEnabled = false
+    }
+  }
+
+  func requestInputMonitoring() {
+    PermissionController.requestInputMonitoring()
+    refreshPermissions()
+  }
+
+  func requestAccessibility() {
+    PermissionController.requestAccessibility()
+    refreshPermissions()
+  }
+
+  private func handleRuntimeEvent(_ event: InputObservationRuntimeEvent) {
+    switch event {
+    case .stateChanged(let state):
+      observationState = state
+      refreshPermissions()
+    case .wordCompleted:
+      // F05 consumes completed words. F04 intentionally stores no typed content.
+      break
+    }
+  }
 }
 
 private struct MenuBarContent: View {
@@ -56,8 +102,14 @@ private struct MenuBarContent: View {
   var body: some View {
     Text(model.statusTitle)
 
-    Toggle("자동 교정", isOn: $model.isCorrectionEnabled)
-      .disabled(!model.permissions.isReady)
+    Toggle(
+      "자동 교정",
+      isOn: Binding(
+        get: { model.isCorrectionEnabled },
+        set: { model.setCorrectionEnabled($0) }
+      )
+    )
+    .disabled(!model.isCorrectionEnabled && !model.permissions.isReady)
 
     Divider()
 
@@ -97,11 +149,26 @@ private struct SettingsView: View {
       }
 
       Section("자동 교정") {
-        Toggle("자동 교정 사용", isOn: $model.isCorrectionEnabled)
-          .disabled(!model.permissions.isReady)
-        Text("자동 교정은 명시적으로 켠 뒤에만 동작합니다. 현재 scaffold에는 키 입력 관찰이나 텍스트 교체 동작이 포함되지 않았습니다.")
+        Toggle(
+          "자동 교정 사용",
+          isOn: Binding(
+            get: { model.isCorrectionEnabled },
+            set: { model.setCorrectionEnabled($0) }
+          )
+        )
+        .disabled(!model.isCorrectionEnabled && !model.permissions.isReady)
+        Text("자동 교정은 명시적으로 켠 뒤에만 입력을 관찰합니다. 텍스트 교체는 다음 기능 단계에서 연결됩니다.")
           .font(.footnote)
           .foregroundStyle(.secondary)
+      }
+
+      Section("권한") {
+        Button("입력 모니터링 요청") {
+          model.requestInputMonitoring()
+        }
+        Button("손쉬운 사용 요청") {
+          model.requestAccessibility()
+        }
       }
 
       Section("개인정보") {
