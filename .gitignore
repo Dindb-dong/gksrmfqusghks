@@ -2,6 +2,7 @@
 .build/
 DerivedData/
 dist/
+release/
 artifacts/
 *.xcarchive
 *.dmg

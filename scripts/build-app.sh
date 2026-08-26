@@ -27,14 +27,17 @@ HANKEY_BIN_PATH="$(
 )"
 HANKEY_APP="$HANKEY_ROOT/dist/HanKey.app"
 
+"$HANKEY_ROOT/scripts/generate-app-icon.sh" >/dev/null
+
 rm -rf "$HANKEY_APP"
 mkdir -p "$HANKEY_APP/Contents/MacOS" "$HANKEY_APP/Contents/Resources"
 cp "$HANKEY_BIN_PATH/HanKeyApp" "$HANKEY_APP/Contents/MacOS/HanKeyApp"
 cp "$HANKEY_ROOT/App/Info.plist" "$HANKEY_APP/Contents/Info.plist"
+cp -R "$HANKEY_ROOT/.build/CompiledAssets/." "$HANKEY_APP/Contents/Resources/"
 chmod 755 "$HANKEY_APP/Contents/MacOS/HanKeyApp"
 
 if [[ "$HANKEY_IDENTITY" == "-" ]]; then
-    codesign --force --sign - --timestamp=none "$HANKEY_APP"
+    codesign --force --options runtime --sign - --timestamp=none "$HANKEY_APP"
 else
     codesign --force --options runtime --timestamp --sign "$HANKEY_IDENTITY" "$HANKEY_APP"
 fi
