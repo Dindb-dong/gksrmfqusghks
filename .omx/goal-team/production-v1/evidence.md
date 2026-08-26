@@ -16,7 +16,8 @@
 | F02 Dubeolsik core | `feature/dubeolsik-core`, PR #2 | `77bd9d0` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F03 Safety detector | `feature/safety-detector`, PR #3 | `d082bc8` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F04 Input observation | `feature/input-observation`, PR #4 | `b49532b` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F05 Text rewrite | `feature/text-rewrite` | `e02e7d5`, `19e9bf4`, `5ccb480`, `64614bb` | 40 local tests and Release build passed | pending | pending |
+| F05 Text rewrite | `feature/text-rewrite`, PR #5 | `d4c3be7` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F06 Production UX | `feature/production-ux` | `7af1aad`, `587ac6e` | 40 local tests, Release build, Light/Dark visual QA passed | pending | pending |
 
 ## F01 verification
 
@@ -72,6 +73,17 @@
 - Replacement caret position is verified before input-source selection. A still-adjacent unverified replacement is rolled back; a source-switch failure preserves an in-memory record for F07 Undo.
 - Real input arriving before mutation moves the caret and cancels correction without suppressing or losing the user's event. Active event holding/replay is not enabled because it would broaden secure-input interception; rapid-typing behavior remains an explicit F08 compatibility and latency gate.
 - Runtime/privacy impact: the last correction record is memory-only, no content is displayed or logged, and no persistence, network, clipboard, or third-party dependency was added.
+
+## F06 verification
+
+- `./scripts/check.sh`: all 40 repository tests passed; Swift format lint, runtime no-network scan, Release build, app bundle assembly, and ad-hoc signing passed.
+- The first-run AppDelegate path was launched from the built `HanKey.app`; a real 640×520 onboarding window appeared for an incomplete local onboarding state.
+- Light privacy onboarding, missing-permission recovery, and Dark settings at the 560pt minimum width were captured by exact HanKey-owned window IDs and visually reviewed without capturing the rest of the desktop.
+- `docs/qa/f06-production-ux.md` records the Light/Dark/Reduce Motion, keyboard, VoiceOver, content, and trust review matrix.
+- Onboarding orders Local only disclosure before permission actions, supports skipping without enabling observation, provides an isolated deterministic conversion demo, and starts observation only after an explicit final action with both permissions present.
+- Menu and settings distinguish active, paused, permission-required, Secure Input protection, and event-tap failure states with icon plus text. Permission controls include a reason, current state, prompt, System Settings deep link, and refresh path.
+- Standard controls preserve keyboard traversal; default action, decorative progress hiding, combined status semantics, stable accessibility identifiers, and optional VoiceOver success announcements are present.
+- Release structural review: DEBUG-only screenshot routes and forced Dark appearance are compiled out; no raw text, key sequence, correction pair, confidence score, telemetry, clipboard, network client, or third-party UI dependency was added.
 
 ## Structural review
 
