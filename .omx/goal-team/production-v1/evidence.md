@@ -15,7 +15,8 @@
 | F01 Native scaffold | `feature/native-scaffold`, PR #1 | `a5bf7d9` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F02 Dubeolsik core | `feature/dubeolsik-core`, PR #2 | `77bd9d0` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F03 Safety detector | `feature/safety-detector`, PR #3 | `d082bc8` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F04 Input observation | `feature/input-observation` | `6e5e73c`, `ad9893f`, `604a43b`, `a6b39df` | 32 local tests and Release build passed | pending | pending |
+| F04 Input observation | `feature/input-observation`, PR #4 | `b49532b` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F05 Text rewrite | `feature/text-rewrite` | `e02e7d5`, `19e9bf4`, `5ccb480`, `64614bb` | 40 local tests and Release build passed | pending | pending |
 
 ## F01 verification
 
@@ -57,8 +58,20 @@
 - The in-memory word buffer is capped at 64 physical tokens, expires after 10 seconds, and is irreversibly purged when observation stops or protection activates.
 - Secure Keyboard Entry and `AXSecureTextField` are hard stops. Unknown/non-editable focus fails closed, and a process/AX-element identity change purges cross-field state before the next token is accepted.
 - Event-tap callback scope review: no Accessibility lookup, disk access, network access, language scoring, text mutation, or UI work occurs inside the callback; the main-RunLoop handoff does not allocate a per-keystroke Swift task.
+- F05 structural re-review found that the original main-actor handoff still executed downstream AX work on the callback stack. Commit `e02e7d5` corrected this by asynchronously enqueueing normalized observations before runtime processing.
 - Permission prompts are explicit user actions. The runtime does not start until the user enables correction and both required permissions exist.
 - Manual real-app secure-field validation remains intentionally open for the F08 compatibility matrix because CI and unattended local runs cannot grant or manipulate macOS TCC consent.
+
+## F05 verification
+
+- `swift test --filter CorrectionTransactionCoordinatorTests`: all 7 transaction tests passed for focus races, exact text validation, whitespace/punctuation preservation, single-line Return behavior, verified replacement, rollback, and input-source failure records.
+- `swift test --filter InputSourceControllerTests`: stable ABC and 2-Set Korean IDs are mapped without localized display names; the same IDs were confirmed against this Mac's installed TIS inventory.
+- `./scripts/check.sh`: all 40 repository tests passed; Swift format lint, runtime no-network scan, Release build, app bundle assembly, and ad-hoc signing passed.
+- Rewrites query only the expected UTF-16 range through `AXStringForRange`; the implementation never reads or replaces the full field value and never uses the clipboard.
+- The coordinator revalidates PID, AX element identity, caret, exact original text, and actual boundary immediately before setting `AXSelectedTextRange` and posting sentinel-marked Unicode events.
+- Replacement caret position is verified before input-source selection. A still-adjacent unverified replacement is rolled back; a source-switch failure preserves an in-memory record for F07 Undo.
+- Real input arriving before mutation moves the caret and cancels correction without suppressing or losing the user's event. Active event holding/replay is not enabled because it would broaden secure-input interception; rapid-typing behavior remains an explicit F08 compatibility and latency gate.
+- Runtime/privacy impact: the last correction record is memory-only, no content is displayed or logged, and no persistence, network, clipboard, or third-party dependency was added.
 
 ## Structural review
 

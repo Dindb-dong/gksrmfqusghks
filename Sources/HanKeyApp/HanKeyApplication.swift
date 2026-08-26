@@ -24,9 +24,17 @@ final class AppModel {
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
   private(set) var isCorrectionEnabled = false
   private(set) var observationState: InputObservationState = .stopped
+  private(set) var correctionStatus = "대기 중"
   @ObservationIgnored private var observationRuntime: InputObservationRuntime?
+  @ObservationIgnored private var inputSourceController: InputSourceController?
+  @ObservationIgnored private var transactionCoordinator: CorrectionTransactionCoordinator?
+  @ObservationIgnored private var activeTransaction: Task<Void, Never>?
+  @ObservationIgnored private var lastCorrectionRecord: CorrectionTransactionRecord?
 
   init() {
+    let inputSourceController = InputSourceController()
+    self.inputSourceController = inputSourceController
+    transactionCoordinator = CorrectionTransactionCoordinator(inputSources: inputSourceController)
     observationRuntime = InputObservationRuntime { [weak self] event in
       self?.handleRuntimeEvent(event)
     }
@@ -69,6 +77,8 @@ final class AppModel {
       isCorrectionEnabled = true
     } else {
       observationRuntime?.stop()
+      activeTransaction?.cancel()
+      activeTransaction = nil
       isCorrectionEnabled = false
     }
   }
@@ -88,9 +98,70 @@ final class AppModel {
     case .stateChanged(let state):
       observationState = state
       refreshPermissions()
-    case .wordCompleted:
-      // F05 consumes completed words. F04 intentionally stores no typed content.
-      break
+    case .wordCompleted(let word, let boundary, let focusIdentity):
+      evaluateAndCorrect(word: word, boundary: boundary, focusIdentity: focusIdentity)
+    }
+  }
+
+  private func evaluateAndCorrect(
+    word: BufferedWord,
+    boundary: WordBoundary,
+    focusIdentity: FocusedElementIdentity
+  ) {
+    guard
+      activeTransaction == nil,
+      let activeLanguage = inputSourceController?.currentSource()?.language,
+      let transactionCoordinator
+    else {
+      return
+    }
+    let original: String
+    let candidate: String
+    switch activeLanguage {
+    case .english:
+      original = word.qwerty
+      candidate = DubeolsikConverter.compose(word.qwerty)
+    case .korean:
+      original = DubeolsikConverter.compose(word.qwerty)
+      candidate = DubeolsikConverter.decomposeToQWERTY(original)
+    }
+    let evidence = SystemLexiconEvidenceProvider.evidence(
+      original: original,
+      candidate: candidate,
+      activeLanguage: activeLanguage
+    )
+    let decision = CorrectionDecisionEngine().decide(
+      CorrectionRequest(
+        token: original,
+        activeLanguage: activeLanguage,
+        lexiconEvidence: evidence
+      )
+    )
+    guard case .correct(let proposal) = decision else {
+      return
+    }
+
+    correctionStatus = "교정 확인 중"
+    activeTransaction = Task { @MainActor [weak self] in
+      let result = await transactionCoordinator.perform(
+        proposal: proposal,
+        boundary: boundary,
+        expectedFocus: focusIdentity
+      )
+      guard let self else {
+        return
+      }
+      switch result {
+      case .corrected(let record):
+        lastCorrectionRecord = record
+        correctionStatus = "최근 교정 완료"
+      case .cancelled(.sourceSwitchFailed(let record)):
+        lastCorrectionRecord = record
+        correctionStatus = "입력 소스 전환 실패"
+      case .cancelled:
+        correctionStatus = "대기 중"
+      }
+      activeTransaction = nil
     }
   }
 }
@@ -157,7 +228,8 @@ private struct SettingsView: View {
           )
         )
         .disabled(!model.isCorrectionEnabled && !model.permissions.isReady)
-        Text("자동 교정은 명시적으로 켠 뒤에만 입력을 관찰합니다. 텍스트 교체는 다음 기능 단계에서 연결됩니다.")
+        LabeledContent("최근 동작", value: model.correctionStatus)
+        Text("고신뢰 단어만 클립보드 없이 교체하고, 성공한 뒤 다음 입력 소스를 맞춥니다.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
