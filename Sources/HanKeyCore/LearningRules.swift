@@ -35,7 +35,14 @@ public struct LearningRuleSet: Equatable, Sendable {
   public private(set) var entries: [LearningRuleEntry]
 
   public init(entries: [LearningRuleEntry] = []) {
-    self.entries = entries
+    self.entries = []
+    for entry in entries {
+      _ = upsert(
+        original: entry.original,
+        replacement: entry.replacement,
+        behavior: entry.behavior
+      )
+    }
   }
 
   public func behavior(original: String, replacement: String) -> LearningRuleBehavior? {

@@ -23,4 +23,20 @@ final class LearningRulesTests: XCTestCase {
     )
     XCTAssertTrue(rules.entries.isEmpty)
   }
+
+  func testLoadedEntriesAreRevalidatedAndDeduplicated() {
+    let entries = [
+      LearningRuleEntry(original: "safe", replacement: "ㄴㅁㄹㄷ", behavior: .always),
+      LearningRuleEntry(original: "safe", replacement: "ㄴㅁㄹㄷ", behavior: .never),
+      LearningRuleEntry(
+        original: String(repeating: "x", count: 65),
+        replacement: "invalid",
+        behavior: .always
+      ),
+    ]
+
+    let rules = LearningRuleSet(entries: entries)
+    XCTAssertEqual(rules.entries.count, 1)
+    XCTAssertEqual(rules.behavior(original: "safe", replacement: "ㄴㅁㄹㄷ"), .never)
+  }
 }

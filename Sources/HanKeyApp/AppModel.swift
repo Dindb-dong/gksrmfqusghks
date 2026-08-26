@@ -106,7 +106,12 @@ final class AppModel {
     }
     manualShortcut = Self.savedShortcut(forKey: "manualShortcut")
     undoShortcut = Self.savedShortcut(forKey: "undoShortcut")
-    _ = applyShortcutConfiguration(persist: false)
+    if !applyShortcutConfiguration(persist: false) {
+      manualShortcut = .none
+      undoShortcut = .none
+      _ = applyShortcutConfiguration(persist: true)
+      shortcutMessage = "등록할 수 없는 단축키를 안전하게 해제했습니다."
+    }
   }
 
   var operationalStatus: OperationalStatus {
