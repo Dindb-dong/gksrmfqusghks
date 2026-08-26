@@ -1,0 +1,33 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "name": "HanKey-1.0.0-SBOM",
+  "documentNamespace": "https://github.com/Dindb-dong/gksrmfqusghks/releases/tag/v1.0.0/sbom",
+  "creationInfo": {
+    "creators": [
+      "Organization: Dindb-dong"
+    ],
+    "created": "2026-08-27T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-HanKey",
+      "name": "HanKey",
+      "versionInfo": "1.0.0",
+      "downloadLocation": "https://github.com/Dindb-dong/gksrmfqusghks",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright 2026 Max Kim",
+      "externalRefs": []
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-HanKey"
+    }
+  ]
+}
