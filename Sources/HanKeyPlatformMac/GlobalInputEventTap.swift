@@ -95,7 +95,7 @@ public final class GlobalInputEventTap: @unchecked Sendable {
       if let tap = owner.eventTap {
         CGEvent.tapEnable(tap: tap, enable: true)
       }
-      owner.handler(.tapRecovered)
+      owner.deliver(.tapRecovered)
       return Unmanaged.passUnretained(event)
     }
 
@@ -104,16 +104,22 @@ public final class GlobalInputEventTap: @unchecked Sendable {
     }
 
     if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-      owner.handler(
+      owner.deliver(
         .buffer(.invalidate(.pointerInteraction), timestampNanoseconds: event.timestamp)
       )
     } else if type == .keyDown {
       let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
       let observation = KeyEventInterpreter.interpret(keyCode: keyCode, flags: event.flags)
-      owner.handler(.buffer(observation, timestampNanoseconds: event.timestamp))
+      owner.deliver(.buffer(observation, timestampNanoseconds: event.timestamp))
     }
 
     return Unmanaged.passUnretained(event)
+  }
+
+  private func deliver(_ observation: GlobalInputObservation) {
+    DispatchQueue.main.async { [handler] in
+      handler(observation)
+    }
   }
 }
 
