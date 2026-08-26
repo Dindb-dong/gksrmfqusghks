@@ -7,6 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("--dark-appearance") {
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+      }
       if ProcessInfo.processInfo.arguments.contains("--show-settings") {
         showDebugSettings()
         return

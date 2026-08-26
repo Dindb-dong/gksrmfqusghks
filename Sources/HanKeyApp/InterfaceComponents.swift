@@ -78,3 +78,19 @@ struct LocalOnlyDisclosure: View {
     .accessibilityIdentifier("local-only-disclosure")
   }
 }
+
+#if DEBUG
+  #Preview("Operational states") {
+    VStack(alignment: .leading, spacing: 20) {
+      StatusHeader(status: .active)
+      StatusHeader(status: .paused)
+      StatusHeader(status: .permissionRequired)
+      StatusHeader(status: .protected)
+      StatusHeader(status: .eventTapError)
+      Divider()
+      LocalOnlyDisclosure()
+    }
+    .padding(24)
+    .frame(width: 560)
+  }
+#endif
