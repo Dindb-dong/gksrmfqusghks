@@ -111,7 +111,7 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     }
     let element = unsafeDowncast(value, to: AXUIElement.self)
     let context = FocusedElementSecurityInspector.context(for: element)
-    return context.state == .editable ? element : nil
+    return context.state == .editable && context.surface == .standardText ? element : nil
   }
 
   private func processID(of element: AXUIElement) -> pid_t {

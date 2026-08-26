@@ -12,6 +12,7 @@ public enum BufferInvalidationReason: String, Equatable, Sendable {
   case navigation
   case modifiedCommand
   case inputSourceChanged
+  case systemStateChanged
   case unknownKey
   case idleTimeout
   case capacityExceeded

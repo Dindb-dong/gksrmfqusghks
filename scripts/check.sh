@@ -13,4 +13,5 @@ swift format lint \
 
 swift test --package-path "$HANKEY_ROOT" --parallel
 "$HANKEY_ROOT/scripts/verify-no-network.sh"
+"$HANKEY_ROOT/scripts/verify-privacy-boundaries.sh"
 "$HANKEY_ROOT/scripts/build-app.sh" release

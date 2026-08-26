@@ -18,7 +18,8 @@
 | F04 Input observation | `feature/input-observation`, PR #4 | `b49532b` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F05 Text rewrite | `feature/text-rewrite`, PR #5 | `d4c3be7` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F06 Production UX | `feature/production-ux`, PR #6 | `43053fb` | local, visual QA, and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F07 Manual, Undo, learning | `feature/manual-undo-learning` | `b66284a`, `59d3803`, `e8e6eee`, `4bd69ae`, `4c96205` | 51 local tests and Release build passed | pending | pending |
+| F07 Manual, Undo, learning | `feature/manual-undo-learning`, PR #7 | `9a163bd` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F08 Compatibility UltraQA | `feature/compatibility-qa` | `baa567f`, `3c15edb`, `b06f3c3`, `b358d9b` | 60 local tests, adversarial cycle, Release build passed | pending | pending |
 
 ## F01 verification
 
@@ -96,6 +97,17 @@
 - Shortcut tests cover stable presets and internal collisions. Runtime Carbon registration reports OS conflicts, restores the prior working configuration, and safely disables corrupt/unregisterable saved shortcuts.
 - Menu and settings expose selection/last-word conversion, one-step Undo, optional Never learning, shortcut selection, explicit rule add/delete/reset/export, empty/recovery states, and destructive reset confirmation.
 - Privacy review: manual last-word reads at most 64 UTF-16 units before the caret; selection conversion is capped at 256; only user-approved rule pairs reach disk; no clipboard, telemetry, network, or content logging API is present.
+
+## F08 verification
+
+- UltraQA cycle 1 completed with the full matrix in `docs/qa/f08-ultraqa.md`; all applicable normal, hostile, malformed, interruption, stale-state, dirty-worktree, hung-command, flaky, and misleading-output scenarios have evidence and cleanup status.
+- A high-severity integration gap was found and fixed: protected-surface classifications existed in core but live automatic requests always used standard text. Runtime now classifies bundle/AX context and blocks automatic and manual mutation in terminal, IDE, password manager, remote desktop, browser address, secure, and unknown surfaces.
+- `./scripts/check.sh`: all 60 tests passed; format, no-network, new clipboard/whole-field-AX/logging gate, Release build, app assembly, and ad-hoc signing passed.
+- Stress evidence: 100,000 synthetic printable events completed in 0.018 seconds locally with at most 64 retained tokens; 1,000 protect/unprotect/system interruption cycles restored zero prior tokens; the stress suite passed 3/3 reruns.
+- Sleep/wake, session active/inactive, and display sleep/wake notifications now purge buffered state. Required permissions are rechecked during runtime protection refresh.
+- Misleading SUCCESS with exit 1 was rejected; a 300-second child was yielded then interrupted with exit 130; stale iteration 99 was rejected; all isolated harnesses/logs were removed.
+- Content-free support export is schema-limited to app/OS/architecture, permission booleans, operational state, and rule count. Typed content, key codes, selection, and app identity are excluded by test.
+- Safety boundary: live TextEdit/browser/Electron/password/Secure Input testing was not run because it requires persistent macOS TCC consent. Automated adapter/surface/focus/transaction tests are the safe substitute; live consent remains a truthful F09 release gate.
 
 ## Structural review
 
