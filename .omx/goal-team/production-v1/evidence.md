@@ -17,7 +17,8 @@
 | F03 Safety detector | `feature/safety-detector`, PR #3 | `d082bc8` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F04 Input observation | `feature/input-observation`, PR #4 | `b49532b` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F05 Text rewrite | `feature/text-rewrite`, PR #5 | `d4c3be7` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F06 Production UX | `feature/production-ux` | `7af1aad`, `587ac6e` | 40 local tests, Release build, Light/Dark visual QA passed | pending | pending |
+| F06 Production UX | `feature/production-ux`, PR #6 | `43053fb` | local, visual QA, and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F07 Manual, Undo, learning | `feature/manual-undo-learning` | `b66284a`, `59d3803`, `e8e6eee`, `4bd69ae`, `4c96205` | 51 local tests and Release build passed | pending | pending |
 
 ## F01 verification
 
@@ -84,6 +85,17 @@
 - Menu and settings distinguish active, paused, permission-required, Secure Input protection, and event-tap failure states with icon plus text. Permission controls include a reason, current state, prompt, System Settings deep link, and refresh path.
 - Standard controls preserve keyboard traversal; default action, decorative progress hiding, combined status semantics, stable accessibility identifiers, and optional VoiceOver success announcements are present.
 - Release structural review: DEBUG-only screenshot routes and forced Dark appearance are compiled out; no raw text, key sequence, correction pair, confidence score, telemetry, clipboard, network client, or third-party UI dependency was added.
+
+## F07 verification
+
+- `./scripts/check.sh`: all 51 repository tests passed; Swift format lint, runtime no-network scan, Release build, app bundle assembly, and ad-hoc signing passed.
+- Manual conversion tests cover bounded last-word lookup, explicit selected Hangul conversion, mixed-script rejection, input-source selection, and strict same-focus/caret/text one-step Undo.
+- Undo records remain memory-only. An undone pair is persisted as Never only after a separate explicit menu/settings action; automatic Undo never writes learning data.
+- Learning rule tests cover normalization, exact-pair replacement, 64-character bounds, load-time revalidation/deduplication, atomic versioned JSON persistence, explicit export, restart reload, and corrupted-file quarantine with empty-state recovery.
+- Automatic detection consults only exact local Always/Never pairs, and hard protected-surface safety still executes before explicit rules.
+- Shortcut tests cover stable presets and internal collisions. Runtime Carbon registration reports OS conflicts, restores the prior working configuration, and safely disables corrupt/unregisterable saved shortcuts.
+- Menu and settings expose selection/last-word conversion, one-step Undo, optional Never learning, shortcut selection, explicit rule add/delete/reset/export, empty/recovery states, and destructive reset confirmation.
+- Privacy review: manual last-word reads at most 64 UTF-16 units before the caret; selection conversion is capped at 256; only user-approved rule pairs reach disk; no clipboard, telemetry, network, or content logging API is present.
 
 ## Structural review
 
