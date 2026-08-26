@@ -95,7 +95,8 @@ score(text) = dictionary
 ### 데이터 선택
 
 - 대형 생성 모델이나 네트워크 모델을 사용하지 않습니다.
-- 라이선스가 명확한 단어 빈도·n-gram 데이터만 번들합니다.
+- v1 사전 증거는 macOS의 로컬 `NSSpellChecker`에서 주입하며, 결과가 없으면 fail-closed합니다. 근거는 `docs/decisions/0001-system-lexicon-evidence.md`에 기록합니다.
+- 향후 라이선스가 명확한 단어 빈도·n-gram 데이터를 번들하려면 별도 ADR과 precision 검증을 요구합니다.
 - 고유명사와 사용자 용어는 명시적 로컬 예외 목록으로 보완합니다.
 
 ## 7. 텍스트 교체
