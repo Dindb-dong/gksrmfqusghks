@@ -17,7 +17,16 @@ gksrmffh   → 한글로
 
 ## 현재 상태
 
-프로덕션 v1을 위한 계획과 제품 계약을 확정한 단계입니다. 구현은 기능별 Git worktree와 PR로 진행합니다.
+프로덕션 v1 제품 계약과 Swift 네이티브 scaffold가 마련됐습니다. 자동 교정 기능은 아직 구현되지 않았으며, 이후 기능은 Git worktree와 PR로 순차 개발합니다.
+
+## 개발
+
+```sh
+swift test
+./scripts/check.sh
+```
+
+`./scripts/check.sh`는 Swift format lint, 테스트, 런타임 네트워크 API 금지 검사, ad-hoc 서명된 Release 앱 번들 생성을 순서대로 검증합니다. 결과 앱은 `dist/HanKey.app`에 생성됩니다.
 
 ## 문서
 
@@ -27,6 +36,7 @@ gksrmffh   → 한글로
 - [단계별 로드맵](ROADMAP.md)
 - [보안 및 개인정보 보호](SECURITY.md)
 - [테스트 전략](docs/TESTING.md)
+- [의존성 목록](docs/DEPENDENCIES.md)
 - [호환성 정책](docs/COMPATIBILITY.md)
 - [릴리스 계획](docs/RELEASE.md)
 - [기여 및 Git 워크플로](CONTRIBUTING.md)
