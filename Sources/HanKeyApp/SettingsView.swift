@@ -270,6 +270,12 @@ struct SettingsView: View {
       Text("라이선스와 보안 정책은 공개 저장소에서 확인할 수 있습니다.")
         .font(.footnote)
         .foregroundStyle(.secondary)
+      Button("콘텐츠 없는 진단 정보 내보내기…") {
+        model.exportContentFreeDiagnosticReport()
+      }
+      Text("앱·OS 버전, 아키텍처, 권한과 상태 코드, 규칙 개수만 포함합니다. 입력 내용과 앱 이름은 포함하지 않습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
     }
   }
 }

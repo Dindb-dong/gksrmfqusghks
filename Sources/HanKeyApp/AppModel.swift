@@ -40,6 +40,16 @@ enum OperationalStatus: Equatable {
     case .eventTapError: "exclamationmark.triangle"
     }
   }
+
+  var diagnosticCode: String {
+    switch self {
+    case .active: "active"
+    case .paused: "paused"
+    case .permissionRequired: "permission_required"
+    case .protected: "protected"
+    case .eventTapError: "event_tap_error"
+    }
+  }
 }
 
 enum CorrectionActivity: Equatable {
@@ -297,6 +307,29 @@ final class AppModel {
       learningMessage = "선택한 위치에 내보냈습니다."
     } catch {
       learningMessage = "로컬 규칙을 내보내지 못했습니다."
+    }
+  }
+
+  func exportContentFreeDiagnosticReport() {
+    let panel = NSSavePanel()
+    panel.title = "콘텐츠 없는 진단 정보 내보내기"
+    panel.nameFieldStringValue = "hankey-diagnostics.json"
+    panel.allowedContentTypes = [.json]
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    let version =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+      ?? "development"
+    let report = ContentFreeDiagnosticReport(
+      appVersion: version,
+      permissions: permissions,
+      operationalState: operationalStatus.diagnosticCode,
+      learningRuleCount: learningRules.count
+    )
+    do {
+      try report.encoded().write(to: url, options: .atomic)
+      learningMessage = "콘텐츠 없는 진단 정보를 내보냈습니다."
+    } catch {
+      learningMessage = "진단 정보를 내보내지 못했습니다."
     }
   }
 
