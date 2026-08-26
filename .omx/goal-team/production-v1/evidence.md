@@ -14,7 +14,8 @@
 | F00 Repository bootstrap | `main` | `b9eb885` | docs format and remote checks | published to public `main` | n/a |
 | F01 Native scaffold | `feature/native-scaffold`, PR #1 | `a5bf7d9` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F02 Dubeolsik core | `feature/dubeolsik-core`, PR #2 | `77bd9d0` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F03 Safety detector | `feature/safety-detector` | `5d9ad5e`, `d4a7379` | local checks passed | pending | pending |
+| F03 Safety detector | `feature/safety-detector`, PR #3 | `d082bc8` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F04 Input observation | `feature/input-observation` | `6e5e73c`, `ad9893f`, `604a43b`, `a6b39df` | 32 local tests and Release build passed | pending | pending |
 
 ## F01 verification
 
@@ -48,6 +49,17 @@
 - Plan adaptation: no third-party dictionary/n-gram asset is bundled. ADR 0001 uses local `NSSpellChecker` only as injected positive evidence and fails closed when unavailable; core tests remain deterministic.
 - Structural scope review: hard safety precedes rules/scoring, decisions remain value-based and Sendable in core, AppKit spell checking stays in `HanKeyPlatformMac`, and no event/persistence/network behavior is activated.
 
+## F04 verification
+
+- `swift test --filter HanKeyPlatformMacTests`: all 7 permission, key normalization, synthetic-event sentinel, secure-role, and focus-identity tests passed.
+- `./scripts/check.sh`: all 32 repository tests passed; Swift format lint, runtime no-network scan, Release build, app bundle assembly, and ad-hoc signing passed.
+- The listen-only session event tap normalizes physical ANSI letter keys and word boundaries, ignores marked synthetic events, and purges state after tap recovery, pointer input, navigation, modified commands, app activation, or input-source change.
+- The in-memory word buffer is capped at 64 physical tokens, expires after 10 seconds, and is irreversibly purged when observation stops or protection activates.
+- Secure Keyboard Entry and `AXSecureTextField` are hard stops. Unknown/non-editable focus fails closed, and a process/AX-element identity change purges cross-field state before the next token is accepted.
+- Event-tap callback scope review: no Accessibility lookup, disk access, network access, language scoring, text mutation, or UI work occurs inside the callback; the main-RunLoop handoff does not allocate a per-keystroke Swift task.
+- Permission prompts are explicit user actions. The runtime does not start until the user enables correction and both required permissions exist.
+- Manual real-app secure-field validation remains intentionally open for the F08 compatibility matrix because CI and unattended local runs cannot grant or manipulate macOS TCC consent.
+
 ## Structural review
 
 - Verdict: pending
@@ -58,5 +70,5 @@
 
 ## Residual risks
 
-- Language asset licensing and quality are unresolved until F03.
+- Real-app TCC, secure-field, and focus-race behavior remains to be exercised in the F08 compatibility matrix.
 - Signing and notarization require external Apple credentials at F09.
