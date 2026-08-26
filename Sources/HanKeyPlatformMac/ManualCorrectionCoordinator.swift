@@ -28,9 +28,11 @@ public enum CorrectionUndoResult: Equatable, Sendable {
 @MainActor
 public final class ManualCorrectionCoordinator {
   public typealias Delay = @MainActor @Sendable () async -> Void
+  public typealias ExclusionProvider = @MainActor (String?) -> Bool
 
   private let rewriter: any FocusedTextRewriting
   private let inputSources: any InputSourceControlling
+  private let isApplicationExcluded: ExclusionProvider
   private let delay: Delay
   private let verificationAttempts: Int
   private var isBusy = false
@@ -38,6 +40,7 @@ public final class ManualCorrectionCoordinator {
   public init(
     rewriter: any FocusedTextRewriting = FocusedTextRewriter(),
     inputSources: any InputSourceControlling = InputSourceController(),
+    isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
     verificationAttempts: Int = 4,
     delay: @escaping Delay = {
       await withCheckedContinuation { continuation in
@@ -50,6 +53,7 @@ public final class ManualCorrectionCoordinator {
     precondition(verificationAttempts > 0)
     self.rewriter = rewriter
     self.inputSources = inputSources
+    self.isApplicationExcluded = isApplicationExcluded
     self.verificationAttempts = verificationAttempts
     self.delay = delay
   }
@@ -66,6 +70,7 @@ public final class ManualCorrectionCoordinator {
     }
     guard
       let snapshot = rewriter.currentSnapshot(),
+      !isApplicationExcluded(snapshot.bundleIdentifier),
       let target = resolveTarget(in: snapshot)
     else {
       return .cancelled(.selectionUnavailable)

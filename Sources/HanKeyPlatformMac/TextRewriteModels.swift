@@ -17,10 +17,16 @@ public struct TextUTF16Range: Equatable, Sendable {
 public struct FocusedTextSnapshot: Equatable, Sendable {
   public let identity: FocusedElementIdentity
   public let selection: TextUTF16Range
+  public let bundleIdentifier: String?
 
-  public init(identity: FocusedElementIdentity, selection: TextUTF16Range) {
+  public init(
+    identity: FocusedElementIdentity,
+    selection: TextUTF16Range,
+    bundleIdentifier: String? = nil
+  ) {
     self.identity = identity
     self.selection = selection
+    self.bundleIdentifier = bundleIdentifier
   }
 }
 

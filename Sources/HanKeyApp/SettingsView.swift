@@ -20,6 +20,7 @@ struct SettingsView: View {
   @State private var ruleReplacement = ""
   @State private var ruleBehavior: LearningRuleBehavior = .never
   @State private var confirmsLearningReset = false
+  @State private var excludedBundleIdentifier = ""
 
   var body: some View {
     VStack(spacing: 0) {
@@ -106,6 +107,45 @@ struct SettingsView: View {
       Label("브라우저 주소창", systemImage: "link")
       Label("터미널·IDE·원격 데스크톱", systemImage: "terminal")
       Text("지원 여부를 확신할 수 없으면 교정하지 않습니다. 클립보드 fallback도 사용하지 않습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    }
+
+    Section("사용자 앱 제외") {
+      TextField("Bundle ID (예: com.example.Editor)", text: $excludedBundleIdentifier)
+      HStack {
+        Button("Bundle ID 추가") {
+          model.addExcludedApplication(excludedBundleIdentifier)
+          if model.learningMessage == "앱 제외를 저장했습니다." {
+            excludedBundleIdentifier = ""
+          }
+        }
+        .disabled(excludedBundleIdentifier.isEmpty)
+        Button("현재 활성 앱 제외") {
+          model.excludeFrontmostApplication()
+        }
+      }
+
+      if model.excludedApplications.isEmpty {
+        Text("추가로 제외한 앱이 없습니다.")
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(model.excludedApplications, id: \.self) { bundleIdentifier in
+          HStack {
+            Text(bundleIdentifier)
+              .textSelection(.enabled)
+            Spacer()
+            Button(role: .destructive) {
+              model.removeExcludedApplication(bundleIdentifier)
+            } label: {
+              Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(bundleIdentifier) 앱 제외 삭제")
+          }
+        }
+      }
+      Text("내장 보호 앱과 보안 필드는 이 목록에서 해제할 수 없습니다.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }

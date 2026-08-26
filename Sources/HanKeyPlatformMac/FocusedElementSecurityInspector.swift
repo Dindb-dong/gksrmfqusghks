@@ -42,15 +42,18 @@ public struct FocusedElementContext: Equatable, Sendable {
   public let state: FocusedElementSecurityState
   public let identity: FocusedElementIdentity?
   public let surface: InputSurface
+  public let bundleIdentifier: String?
 
   public init(
     state: FocusedElementSecurityState,
     identity: FocusedElementIdentity?,
-    surface: InputSurface
+    surface: InputSurface,
+    bundleIdentifier: String?
   ) {
     self.state = state
     self.identity = identity
     self.surface = surface
+    self.bundleIdentifier = bundleIdentifier
   }
 }
 
@@ -70,7 +73,12 @@ public enum FocusedElementSecurityInspector {
       ) == .success,
       let focusedValue
     else {
-      return FocusedElementContext(state: .unavailable, identity: nil, surface: .unsupported)
+      return FocusedElementContext(
+        state: .unavailable,
+        identity: nil,
+        surface: .unsupported,
+        bundleIdentifier: nil
+      )
     }
 
     let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
@@ -103,7 +111,12 @@ public enum FocusedElementSecurityInspector {
       descriptor: descriptor,
       securityState: state
     )
-    return FocusedElementContext(state: state, identity: identity, surface: surface)
+    return FocusedElementContext(
+      state: state,
+      identity: identity,
+      surface: surface,
+      bundleIdentifier: bundleIdentifier
+    )
   }
 
   public static func classify(

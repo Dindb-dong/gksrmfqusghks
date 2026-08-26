@@ -16,7 +16,11 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     guard identity.processID > 0, let selection = selectedRange(of: element) else {
       return nil
     }
-    return FocusedTextSnapshot(identity: identity, selection: selection)
+    return FocusedTextSnapshot(
+      identity: identity,
+      selection: selection,
+      bundleIdentifier: FocusedElementSecurityInspector.context(for: element).bundleIdentifier
+    )
   }
 
   public func text(

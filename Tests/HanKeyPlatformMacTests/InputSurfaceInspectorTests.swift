@@ -93,4 +93,28 @@ final class InputSurfaceInspectorTests: XCTestCase {
       .standardText
     )
   }
+
+  func testUserExclusionProtectsOtherwiseStandardField() {
+    let context = FocusedElementContext(
+      state: .editable,
+      identity: FocusedElementIdentity(processID: 1, elementHash: 1),
+      surface: .standardText,
+      bundleIdentifier: "com.example.PrivateEditor"
+    )
+
+    XCTAssertTrue(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: true
+      )
+    )
+    XCTAssertFalse(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: false
+      )
+    )
+  }
 }

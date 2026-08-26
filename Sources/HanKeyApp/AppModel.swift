@@ -84,6 +84,7 @@ final class AppModel {
   private(set) var observationState: InputObservationState = .stopped
   private(set) var correctionActivity: CorrectionActivity = .idle
   private(set) var learningRules: [LearningRuleEntry] = []
+  private(set) var excludedApplications: [String] = []
   private(set) var learningStoreRecovered = false
   private(set) var learningMessage = ""
   private(set) var manualShortcut: ShortcutPreset = .none
@@ -103,14 +104,25 @@ final class AppModel {
     let inputSourceController = InputSourceController()
     self.inputSourceController = inputSourceController
     transactionCoordinator = CorrectionTransactionCoordinator(inputSources: inputSourceController)
-    manualCoordinator = ManualCorrectionCoordinator(inputSources: inputSourceController)
     let learningStore = LocalLearningStore()
     self.learningStore = learningStore
     learningRules = learningStore.rules.entries
+    excludedApplications = learningStore.excludedApplicationBundleIdentifiers
     learningStoreRecovered = learningStore.recoveredFromCorruption
-    observationRuntime = InputObservationRuntime { [weak self] event in
-      self?.handleRuntimeEvent(event)
-    }
+    manualCoordinator = ManualCorrectionCoordinator(
+      inputSources: inputSourceController,
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      }
+    )
+    observationRuntime = InputObservationRuntime(
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      },
+      handler: { [weak self] event in
+        self?.handleRuntimeEvent(event)
+      }
+    )
     shortcutManager = GlobalShortcutManager { [weak self] action in
       self?.handleShortcut(action)
     }
@@ -276,6 +288,42 @@ final class AppModel {
       refreshLearningRules(message: "로컬 규칙을 삭제했습니다.")
     } catch {
       learningMessage = "로컬 규칙을 삭제하지 못했습니다."
+    }
+  }
+
+  func addExcludedApplication(_ bundleIdentifier: String) {
+    guard bundleIdentifier != Bundle.main.bundleIdentifier else {
+      learningMessage = "한글변환 자체는 제외할 수 없습니다."
+      return
+    }
+    do {
+      guard try learningStore?.addExcludedApplication(bundleIdentifier) == true else {
+        learningMessage = "예: com.example.Editor 형식의 bundle ID를 입력하세요."
+        return
+      }
+      refreshLearningRules(message: "앱 제외를 저장했습니다.")
+    } catch {
+      learningMessage = "앱 제외를 저장하지 못했습니다."
+    }
+  }
+
+  func excludeFrontmostApplication() {
+    guard
+      let bundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+      bundleIdentifier != Bundle.main.bundleIdentifier
+    else {
+      learningMessage = "제외할 다른 앱을 먼저 활성화하세요."
+      return
+    }
+    addExcludedApplication(bundleIdentifier)
+  }
+
+  func removeExcludedApplication(_ bundleIdentifier: String) {
+    do {
+      try learningStore?.removeExcludedApplication(bundleIdentifier)
+      refreshLearningRules(message: "앱 제외를 삭제했습니다.")
+    } catch {
+      learningMessage = "앱 제외를 삭제하지 못했습니다."
     }
   }
 
@@ -474,6 +522,7 @@ final class AppModel {
 
   private func refreshLearningRules(message: String) {
     learningRules = learningStore?.rules.entries ?? []
+    excludedApplications = learningStore?.excludedApplicationBundleIdentifiers ?? []
     learningMessage = message
   }
 
