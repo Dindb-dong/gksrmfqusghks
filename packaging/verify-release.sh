@@ -44,6 +44,8 @@ if [[ "${HANKEY_EXPECT_NOTARIZED:-0}" == "1" ]]; then
     xcrun stapler validate "$HANKEY_DMG"
     spctl --assess --type execute --verbose=4 "$HANKEY_APP"
     spctl --assess --type open --context context:primary-signature --verbose=4 "$HANKEY_DMG"
+    xcrun stapler validate "$HANKEY_MOUNT/HanKey.app"
+    spctl --assess --type execute --verbose=4 "$HANKEY_MOUNT/HanKey.app"
 fi
 
 echo "Verified HanKey $HANKEY_VERSION release artifacts."
