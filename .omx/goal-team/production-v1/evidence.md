@@ -122,6 +122,7 @@
 - The final PRD gap for user app exclusions was closed: exact bundle IDs persist locally and protect both automatic and manual paths before text buffering; built-in protected categories remain immutable.
 - Review-driven gaps were closed for persisted automatic-correction opt-in, independent login launch/announcement/sound settings, automatic pre-mutation exclusion revalidation, atomic rollback, private 0700/0600 rule storage, and safe handling of permission-hardening failures.
 - The exact reviewed candidate was installed at `/Applications/HanKey.app`; its binary hash matched the release app, Gatekeeper accepted it as `Notarized Developer ID`, and the running process exposed no network sockets.
+- Installed idle performance: 11 one-minute samples over 10 minutes all reported 0.0% CPU and sleeping state; cumulative CPU stayed at 0.25 seconds, memory at 23 MB, and threads showed no growth.
 - Remaining external gate: install the merged-main signed candidate, grant Input Monitoring and Accessibility in macOS System Settings, and execute the live TextEdit/browser/Electron/Secure Input matrix before GitHub Release publication.
 
 ## Structural review

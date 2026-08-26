@@ -46,6 +46,13 @@ Checksums above describe the branch candidate created before the final PR merge.
 - Structural review retains a performance WATCH for per-event post-callback AX context checks; live TCC latency evidence remains required before production completion.
 - The exact candidate was installed at `/Applications/HanKey.app`; Gatekeeper accepted it as `Notarized Developer ID`, its binary SHA-256 matched the release app, and the running process exposed zero network sockets.
 
+## Installed idle runtime gate
+
+- Candidate: installed reviewed notarized app, PID `85385`, onboarding window open, automatic observation not yet authorized.
+- Sampling: `top`, 11 samples at 60-second intervals from 04:27:58 through 04:38:02 KST.
+- Result: every sample reported 0.0% CPU and `sleeping`; cumulative CPU time stayed at 0.25 seconds, memory stayed at 23 MB, and thread count settled from 4 to 3 without growth.
+- Verdict: pass for the 10-minute no-sustained-polling idle gate. This does not replace the post-TCC typing latency p95/p99 gate.
+
 ## Remaining interactive gate
 
 The installed signed app still requires the user to grant persistent macOS Input Monitoring and Accessibility consent before the live TextEdit/browser/Electron/Secure Input matrix can run. No automation silently changed these security settings. GitHub Release publication occurs only after the merged-main artifact and installed-app gate are confirmed.
