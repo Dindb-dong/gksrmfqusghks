@@ -16,6 +16,7 @@ struct SettingsView: View {
   @Bindable var model: AppModel
   @State private var section: SettingsSection = .general
   @AppStorage("showCorrectionFeedback") private var showCorrectionFeedback = true
+  @AppStorage("playCorrectionSound") private var playCorrectionSound = false
   @State private var ruleOriginal = ""
   @State private var ruleReplacement = ""
   @State private var ruleBehavior: LearningRuleBehavior = .never
@@ -54,6 +55,9 @@ struct SettingsView: View {
       .scrollContentBackground(.hidden)
     }
     .frame(minWidth: 560, idealWidth: 620, maxWidth: 760, minHeight: 440, idealHeight: 500)
+    .task {
+      model.refreshLaunchAtLoginStatus()
+    }
   }
 
   @ViewBuilder
@@ -71,7 +75,32 @@ struct SettingsView: View {
       .disabled(!model.isCorrectionEnabled && !model.permissions.isReady)
 
       LabeledContent("최근 동작", value: model.correctionActivity.title)
-      Toggle("VoiceOver 교정 알림", isOn: $showCorrectionFeedback)
+    }
+
+    Section("시작과 피드백") {
+      Toggle("교정 알림", isOn: $showCorrectionFeedback)
+        .accessibilityHint("VoiceOver로 교정 완료를 알립니다.")
+      Toggle("교정 효과음", isOn: $playCorrectionSound)
+
+      Toggle(
+        "로그인 시 한글변환 실행",
+        isOn: Binding(
+          get: { model.launchAtLoginStatus.isEnabled },
+          set: { model.setLaunchAtLoginEnabled($0) }
+        )
+      )
+      .disabled(model.isUpdatingLaunchAtLogin || model.launchAtLoginStatus == .unavailable)
+      LabeledContent("로그인 실행 상태", value: model.launchAtLoginStatus.title)
+      if model.launchAtLoginStatus == .requiresApproval {
+        Button("로그인 항목 설정 열기") {
+          model.openLoginItemsSettings()
+        }
+      }
+      if !model.launchAtLoginMessage.isEmpty {
+        Text(model.launchAtLoginMessage)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
     }
 
     Section("권한") {
@@ -121,10 +150,13 @@ struct SettingsView: View {
           }
         }
         .disabled(excludedBundleIdentifier.isEmpty)
-        Button("현재 활성 앱 제외") {
-          model.excludeFrontmostApplication()
+        Button("최근 사용 앱 제외") {
+          model.excludeRecentlyUsedApplication()
         }
       }
+      Text("제외할 앱으로 한 번 전환한 뒤 설정으로 돌아오면 최근 앱을 바로 추가할 수 있습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
 
       if model.excludedApplications.isEmpty {
         Text("추가로 제외한 앱이 없습니다.")
@@ -198,6 +230,15 @@ struct SettingsView: View {
       }
     }
 
+    if model.learningStorePermissionWarning {
+      Section {
+        Label(
+          "규칙 파일 권한을 강화하지 못했습니다. 새 규칙 저장을 중단하고 파일 권한을 확인하세요.",
+          systemImage: "lock.trianglebadge.exclamationmark"
+        )
+      }
+    }
+
     Section("로컬 규칙 추가") {
       TextField("입력된 단어", text: $ruleOriginal)
       TextField("변환 후보", text: $ruleReplacement)
@@ -262,10 +303,10 @@ struct SettingsView: View {
         Button("JSON으로 내보내기…") {
           model.exportLearningRules()
         }
-        Button("모든 규칙 초기화", role: .destructive) {
+        Button("모든 로컬 데이터 초기화", role: .destructive) {
           confirmsLearningReset = true
         }
-        .disabled(model.learningRules.isEmpty)
+        .disabled(model.learningRules.isEmpty && model.excludedApplications.isEmpty)
       }
       if !model.learningMessage.isEmpty {
         Text(model.learningMessage)
@@ -277,16 +318,16 @@ struct SettingsView: View {
         .foregroundStyle(.secondary)
     }
     .confirmationDialog(
-      "모든 로컬 규칙을 초기화할까요?",
+      "모든 로컬 데이터를 초기화할까요?",
       isPresented: $confirmsLearningReset,
       titleVisibility: .visible
     ) {
-      Button("모든 규칙 초기화", role: .destructive) {
+      Button("모든 로컬 데이터 초기화", role: .destructive) {
         model.resetLearningRules()
       }
       Button("취소", role: .cancel) {}
     } message: {
-      Text("이 작업은 되돌릴 수 없습니다. 자동 교정 엔진과 권한 설정은 유지됩니다.")
+      Text("단어 규칙과 사용자 앱 제외를 삭제합니다. 자동 교정과 권한 설정은 유지됩니다.")
     }
   }
 

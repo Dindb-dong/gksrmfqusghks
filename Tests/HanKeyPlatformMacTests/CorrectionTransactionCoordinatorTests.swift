@@ -83,6 +83,34 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
+  func testApplicationExclusionIsRevalidatedImmediatelyBeforeTextRead() async {
+    let rewriter = FakeTextRewriter(
+      document: "gksrmffh ",
+      caret: 9,
+      identity: identity,
+      bundleIdentifier: "com.example.PrivateEditor"
+    )
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter,
+      inputSources: sources,
+      isApplicationExcluded: { $0 == "com.example.PrivateEditor" },
+      verificationAttempts: 1,
+      delay: {}
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    XCTAssertEqual(result, .cancelled(.applicationExcluded))
+    XCTAssertEqual(rewriter.readCount, 0)
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   func testTextMismatchCancelsBeforeMutationAndSourceSelection() async {
     let rewriter = FakeTextRewriter(document: "password ", caret: 9, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)
@@ -168,15 +196,22 @@ private final class FakeTextRewriter: FocusedTextRewriting {
   var document: String
   var selection: TextUTF16Range
   var identity: FocusedElementIdentity
+  var bundleIdentifier: String?
   private(set) var readCount = 0
   private(set) var replaceCount = 0
   var verificationFailuresRemaining = 0
   private var replacementPerformed = false
 
-  init(document: String, caret: Int, identity: FocusedElementIdentity) {
+  init(
+    document: String,
+    caret: Int,
+    identity: FocusedElementIdentity,
+    bundleIdentifier: String? = nil
+  ) {
     self.document = document
     selection = TextUTF16Range(location: caret, length: 0)
     self.identity = identity
+    self.bundleIdentifier = bundleIdentifier
   }
 
   func currentSnapshot() -> FocusedTextSnapshot? {
@@ -184,10 +219,15 @@ private final class FakeTextRewriter: FocusedTextRewriting {
       verificationFailuresRemaining -= 1
       return FocusedTextSnapshot(
         identity: identity,
-        selection: TextUTF16Range(location: selection.location + 1, length: selection.length)
+        selection: TextUTF16Range(location: selection.location + 1, length: selection.length),
+        bundleIdentifier: bundleIdentifier
       )
     }
-    return FocusedTextSnapshot(identity: identity, selection: selection)
+    return FocusedTextSnapshot(
+      identity: identity,
+      selection: selection,
+      bundleIdentifier: bundleIdentifier
+    )
   }
 
   func text(in range: TextUTF16Range, matching snapshot: FocusedTextSnapshot) -> String? {

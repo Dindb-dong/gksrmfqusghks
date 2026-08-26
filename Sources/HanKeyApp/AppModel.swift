@@ -80,16 +80,20 @@ final class AppModel {
   static let shared = AppModel()
 
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
-  private(set) var isCorrectionEnabled = false
+  private(set) var isCorrectionEnabled: Bool
   private(set) var observationState: InputObservationState = .stopped
   private(set) var correctionActivity: CorrectionActivity = .idle
   private(set) var learningRules: [LearningRuleEntry] = []
   private(set) var excludedApplications: [String] = []
   private(set) var learningStoreRecovered = false
+  private(set) var learningStorePermissionWarning = false
   private(set) var learningMessage = ""
   private(set) var manualShortcut: ShortcutPreset = .none
   private(set) var undoShortcut: ShortcutPreset = .none
   private(set) var shortcutMessage = "기본 전역 단축키는 등록하지 않습니다."
+  private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .notRegistered
+  private(set) var launchAtLoginMessage = ""
+  private(set) var isUpdatingLaunchAtLogin = false
   @ObservationIgnored private var observationRuntime: InputObservationRuntime?
   @ObservationIgnored private var inputSourceController: InputSourceController?
   @ObservationIgnored private var transactionCoordinator: CorrectionTransactionCoordinator?
@@ -99,16 +103,28 @@ final class AppModel {
   @ObservationIgnored private var manualCoordinator: ManualCorrectionCoordinator?
   @ObservationIgnored private var learningStore: LocalLearningStore?
   @ObservationIgnored private var shortcutManager: GlobalShortcutManager?
+  @ObservationIgnored private var automaticCorrectionPreference: AutomaticCorrectionPreference?
+  @ObservationIgnored private var launchAtLoginController: LaunchAtLoginController?
+  @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
 
   init() {
+    let automaticCorrectionPreference = AutomaticCorrectionPreference()
+    self.automaticCorrectionPreference = automaticCorrectionPreference
+    isCorrectionEnabled = automaticCorrectionPreference.isEnabled
     let inputSourceController = InputSourceController()
     self.inputSourceController = inputSourceController
-    transactionCoordinator = CorrectionTransactionCoordinator(inputSources: inputSourceController)
     let learningStore = LocalLearningStore()
     self.learningStore = learningStore
     learningRules = learningStore.rules.entries
     excludedApplications = learningStore.excludedApplicationBundleIdentifiers
     learningStoreRecovered = learningStore.recoveredFromCorruption
+    learningStorePermissionWarning = learningStore.permissionHardeningFailed
+    transactionCoordinator = CorrectionTransactionCoordinator(
+      inputSources: inputSourceController,
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      }
+    )
     manualCoordinator = ManualCorrectionCoordinator(
       inputSources: inputSourceController,
       isApplicationExcluded: { [weak learningStore] bundleIdentifier in
@@ -126,6 +142,12 @@ final class AppModel {
     shortcutManager = GlobalShortcutManager { [weak self] action in
       self?.handleShortcut(action)
     }
+    let launchAtLoginController = LaunchAtLoginController()
+    self.launchAtLoginController = launchAtLoginController
+    launchAtLoginStatus = launchAtLoginController.status
+    externalApplicationTracker = ExternalApplicationTracker(
+      ownBundleIdentifier: Bundle.main.bundleIdentifier
+    )
     manualShortcut = Self.savedShortcut(forKey: "manualShortcut")
     undoShortcut = Self.savedShortcut(forKey: "undoShortcut")
     if !applyShortcutConfiguration(persist: false) {
@@ -164,6 +186,11 @@ final class AppModel {
 
   func refreshPermissions() {
     permissions = PlatformCapabilities.currentPermissionSnapshot()
+    if isCorrectionEnabled, permissions.isReady,
+      observationState == .stopped || observationState == .permissionRequired
+    {
+      _ = observationRuntime?.start()
+    }
   }
 
   func setCorrectionEnabled(_ enabled: Bool) {
@@ -171,19 +198,52 @@ final class AppModel {
       return
     }
     if enabled {
+      isCorrectionEnabled = true
+      automaticCorrectionPreference?.setEnabled(true)
       refreshPermissions()
       guard observationRuntime?.start() == true else {
-        isCorrectionEnabled = false
         return
       }
-      isCorrectionEnabled = true
     } else {
       observationRuntime?.stop()
       activeTransaction?.cancel()
       activeTransaction = nil
       isCorrectionEnabled = false
+      automaticCorrectionPreference?.setEnabled(false)
       correctionActivity = .idle
     }
+  }
+
+  func resumeSavedCorrectionIfPossible() {
+    guard isCorrectionEnabled else { return }
+    refreshPermissions()
+  }
+
+  func refreshLaunchAtLoginStatus() {
+    launchAtLoginStatus = launchAtLoginController?.status ?? .unavailable
+  }
+
+  func setLaunchAtLoginEnabled(_ enabled: Bool) {
+    guard !isUpdatingLaunchAtLogin, let launchAtLoginController else { return }
+    isUpdatingLaunchAtLogin = true
+    launchAtLoginMessage = ""
+    Task { @MainActor [weak self] in
+      do {
+        try await launchAtLoginController.setEnabled(enabled)
+        self?.launchAtLoginStatus = launchAtLoginController.status
+        if self?.launchAtLoginStatus == .requiresApproval {
+          self?.launchAtLoginMessage = "macOS 로그인 항목 설정에서 한글변환을 허용하세요."
+        }
+      } catch {
+        self?.launchAtLoginStatus = launchAtLoginController.status
+        self?.launchAtLoginMessage = "로그인 실행 설정을 변경하지 못했습니다."
+      }
+      self?.isUpdatingLaunchAtLogin = false
+    }
+  }
+
+  func openLoginItemsSettings() {
+    launchAtLoginController?.openSystemSettings()
   }
 
   func requestInputMonitoring() {
@@ -214,10 +274,15 @@ final class AppModel {
       let result = await manualCoordinator.convertSelectionOrLastWord()
       guard let self else { return }
       switch result {
-      case .corrected(let record), .cancelled(.sourceSwitchFailed(let record)):
+      case .corrected(let record):
         lastCorrectionRecord = record
         pendingNeverRecord = nil
-        correctionActivity = result.isFullyCorrected ? .manuallyCorrected : .sourceSwitchFailed
+        correctionActivity = .manuallyCorrected
+        deliverCorrectionFeedback()
+      case .cancelled(.sourceSwitchFailed(let record)):
+        lastCorrectionRecord = record
+        pendingNeverRecord = nil
+        correctionActivity = .sourceSwitchFailed
       case .cancelled:
         correctionActivity = .actionUnavailable
       }
@@ -307,12 +372,11 @@ final class AppModel {
     }
   }
 
-  func excludeFrontmostApplication() {
+  func excludeRecentlyUsedApplication() {
     guard
-      let bundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
-      bundleIdentifier != Bundle.main.bundleIdentifier
+      let bundleIdentifier = externalApplicationTracker?.lastExternalBundleIdentifier
     else {
-      learningMessage = "제외할 다른 앱을 먼저 활성화하세요."
+      learningMessage = "제외할 앱으로 전환한 뒤 설정으로 돌아오세요."
       return
     }
     addExcludedApplication(bundleIdentifier)
@@ -457,15 +521,7 @@ final class AppModel {
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .corrected
-        if UserDefaults.standard.object(forKey: "showCorrectionFeedback") == nil
-          || UserDefaults.standard.bool(forKey: "showCorrectionFeedback")
-        {
-          NSAccessibility.post(
-            element: NSApplication.shared,
-            notification: .announcementRequested,
-            userInfo: [.announcement: "한영 입력 교정을 완료했습니다."]
-          )
-        }
+        deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
         lastCorrectionRecord = record
         pendingNeverRecord = nil
@@ -481,6 +537,21 @@ final class AppModel {
     switch action {
     case .manualConvert: convertSelectionOrLastWord()
     case .undo: undoLastCorrection()
+    }
+  }
+
+  private func deliverCorrectionFeedback() {
+    if UserDefaults.standard.object(forKey: "showCorrectionFeedback") == nil
+      || UserDefaults.standard.bool(forKey: "showCorrectionFeedback")
+    {
+      NSAccessibility.post(
+        element: NSApplication.shared,
+        notification: .announcementRequested,
+        userInfo: [.announcement: "한영 입력 교정을 완료했습니다."]
+      )
+    }
+    if UserDefaults.standard.bool(forKey: "playCorrectionSound") {
+      NSSound(named: NSSound.Name("Tink"))?.play()
     }
   }
 
@@ -538,12 +609,5 @@ final class AppModel {
       replacement.removeLast()
     }
     return (original, replacement)
-  }
-}
-
-extension ManualCorrectionResult {
-  fileprivate var isFullyCorrected: Bool {
-    if case .corrected = self { return true }
-    return false
   }
 }

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     #endif
     guard !UserDefaults.standard.bool(forKey: "onboardingCompleted") else {
+      AppModel.shared.resumeSavedCorrectionIfPossible()
       return
     }
     showInitialOnboarding()
