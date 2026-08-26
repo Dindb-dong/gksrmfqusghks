@@ -19,7 +19,11 @@ public struct PermissionSnapshot: Equatable, Sendable {
   }
 
   public var isReady: Bool {
-    canMonitorInput && isAccessibilityTrusted && !isSecureInputEnabled
+    hasRequiredPermissions && !isSecureInputEnabled
+  }
+
+  public var hasRequiredPermissions: Bool {
+    canMonitorInput && isAccessibilityTrusted
   }
 }
 
