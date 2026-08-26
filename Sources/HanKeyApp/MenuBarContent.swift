@@ -27,6 +27,24 @@ struct MenuBarContent: View {
 
     Divider()
 
+    Button("선택 영역 또는 마지막 단어 변환") {
+      model.convertSelectionOrLastWord()
+    }
+    .disabled(!model.canUseManualCorrection)
+
+    Button("마지막 교정 되돌리기") {
+      model.undoLastCorrection()
+    }
+    .disabled(!model.canUndo)
+
+    if model.canRememberLastUndoAsNever {
+      Button("방금 되돌린 교정을 다시 변환하지 않기") {
+        model.rememberLastUndoAsNever()
+      }
+    }
+
+    Divider()
+
     if !model.permissions.hasRequiredPermissions {
       Button("권한 설정 확인…") {
         openSettings()
