@@ -16,7 +16,11 @@ public final class CorrectionTransactionCoordinator {
     inputSources: any InputSourceControlling = InputSourceController(),
     verificationAttempts: Int = 4,
     delay: @escaping Delay = {
-      try? await Task.sleep(for: .milliseconds(8))
+      await withCheckedContinuation { continuation in
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(8)) {
+          continuation.resume()
+        }
+      }
     }
   ) {
     precondition(verificationAttempts > 0)
@@ -45,6 +49,9 @@ public final class CorrectionTransactionCoordinator {
     }
 
     await delay()
+    guard !Task.isCancelled else {
+      return .cancelled(.cancelled)
+    }
     guard let snapshot = rewriter.currentSnapshot() else {
       return .cancelled(.selectionUnavailable)
     }
@@ -55,29 +62,19 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.selectionChanged)
     }
 
-    let originalLength = proposal.original.utf16.count
-    let boundaryLength = 1
-    let replacedLength = originalLength + boundaryLength
-    guard snapshot.selection.location >= replacedLength else {
-      return .cancelled(.selectionChanged)
-    }
-    let replacedRange = TextUTF16Range(
-      location: snapshot.selection.location - replacedLength,
-      length: replacedLength
-    )
-    guard let observedText = rewriter.text(in: replacedRange, matching: snapshot) else {
-      return .cancelled(.selectionUnavailable)
-    }
     guard
-      let boundaryText = validatedBoundary(
-        in: observedText,
+      let locatedText = locateText(
         original: proposal.original,
-        boundary: boundary
+        boundary: boundary,
+        snapshot: snapshot
       )
     else {
       return .cancelled(.textMismatch)
     }
 
+    let replacedRange = locatedText.range
+    let observedText = locatedText.text
+    let boundaryText = locatedText.boundary
     let replacementWithBoundary = proposal.replacement + boundaryText
     guard
       rewriter.replace(
@@ -168,20 +165,48 @@ public final class CorrectionTransactionCoordinator {
       return nil
     }
     let suffix = String(observedText.dropFirst(original.count))
-    guard suffix.utf16.count == 1 else {
-      return nil
-    }
     switch boundary {
     case .space:
       return suffix == " " ? suffix : nil
     case .returnKey:
-      return suffix == "\n" || suffix == "\r" ? suffix : nil
+      return suffix.isEmpty || suffix == "\n" || suffix == "\r" ? suffix : nil
     case .tab:
-      return suffix == "\t" ? suffix : nil
+      return suffix.isEmpty || suffix == "\t" ? suffix : nil
     case .punctuation:
-      return suffix.unicodeScalars.allSatisfy {
-        CharacterSet.punctuationCharacters.contains($0)
-      } ? suffix : nil
+      return suffix.utf16.count == 1
+        && suffix.unicodeScalars.allSatisfy {
+          CharacterSet.punctuationCharacters.contains($0)
+        } ? suffix : nil
     }
+  }
+
+  private func locateText(
+    original: String,
+    boundary: WordBoundary,
+    snapshot: FocusedTextSnapshot
+  ) -> (range: TextUTF16Range, text: String, boundary: String)? {
+    let boundaryLengths = boundary == .returnKey || boundary == .tab ? [1, 0] : [1]
+    for boundaryLength in boundaryLengths {
+      let length = original.utf16.count + boundaryLength
+      guard snapshot.selection.location >= length else {
+        continue
+      }
+      let range = TextUTF16Range(
+        location: snapshot.selection.location - length,
+        length: length
+      )
+      guard
+        let text = rewriter.text(in: range, matching: snapshot),
+        let boundaryText = validatedBoundary(
+          in: text,
+          original: original,
+          boundary: boundary
+        )
+      else {
+        continue
+      }
+      return (range, text, boundaryText)
+    }
+    return nil
   }
 }

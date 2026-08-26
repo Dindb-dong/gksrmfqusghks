@@ -45,6 +45,7 @@ public struct CorrectionTransactionRecord: Equatable, Sendable {
 
 public enum CorrectionTransactionFailure: Equatable, Sendable {
   case busy
+  case cancelled
   case sourceUnavailable
   case sourceChanged
   case focusChanged
