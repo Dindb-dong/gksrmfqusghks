@@ -20,7 +20,7 @@
 | F06 Production UX | `feature/production-ux`, PR #6 | `43053fb` | local, visual QA, and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F07 Manual, Undo, learning | `feature/manual-undo-learning`, PR #7 | `9a163bd` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F08 Compatibility UltraQA | `feature/compatibility-qa`, PR #8 | `d42318b` | local UltraQA and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F09 Release engineering | `feature/release-engineering`, PR #9 | `fcee2ae`, `a72c5f0`, `4dd0388`, `1b11de2`, `2fbe933` | 68 tests; universal signed/notarized pre-review app and DMG verified; final candidate pending | pending | pending |
+| F09 Release engineering | `feature/release-engineering`, PR #9 | `fcee2ae`, `a72c5f0`, `4dd0388`, `1b11de2`, `2fbe933`, `fb3f222` | 68 tests; reviewed universal signed/notarized app and DMG installed and verified | pending | pending |
 
 ## F01 verification
 
@@ -116,11 +116,12 @@
 - `./scripts/check.sh`: all 68 tests passed with strict format, no-network, clipboard/whole-field-AX/logging gates, and an ad-hoc Hardened Runtime Release app.
 - Universal SwiftPM Release build contains `x86_64 arm64`; app/ZIP/DMG/SBOM/checksum packaging and exact mounted-DMG nested-app verification passed.
 - Developer ID identity Team `7995Q7WAZF` signed the app and DMG with Hardened Runtime and secure timestamp.
-- Apple app submission `b8fb0f8e-6849-45a4-9993-9d8df19ce8a2` and DMG submission `402459ad-0a7a-416c-a095-4530523715c0` were Accepted; app and DMG staple validation passed.
+- Apple app submission `c33ea25e-e5ae-4cdb-93b6-16ef14af51db` and DMG submission `2e7c7931-87e0-4bfb-b816-e19116d0d69a` for reviewed commit `fb3f222` were Accepted; app and DMG staple validation passed.
 - Gatekeeper accepted both artifacts with source `Notarized Developer ID`; ZIP/DMG/SBOM SHA-256 values and sizes are recorded in `docs/qa/f09-release.md`.
 - A macOS 26 arm runner universal release-smoke job was added after the arm64/Intel validation matrix.
 - The final PRD gap for user app exclusions was closed: exact bundle IDs persist locally and protect both automatic and manual paths before text buffering; built-in protected categories remain immutable.
 - Review-driven gaps were closed for persisted automatic-correction opt-in, independent login launch/announcement/sound settings, automatic pre-mutation exclusion revalidation, atomic rollback, private 0700/0600 rule storage, and safe handling of permission-hardening failures.
+- The exact reviewed candidate was installed at `/Applications/HanKey.app`; its binary hash matched the release app, Gatekeeper accepted it as `Notarized Developer ID`, and the running process exposed no network sockets.
 - Remaining external gate: install the merged-main signed candidate, grant Input Monitoring and Accessibility in macOS System Settings, and execute the live TextEdit/browser/Electron/Secure Input matrix before GitHub Release publication.
 
 ## Structural review
