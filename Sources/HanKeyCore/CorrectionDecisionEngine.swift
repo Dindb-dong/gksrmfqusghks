@@ -45,6 +45,20 @@ public struct CorrectionProposal: Equatable, Sendable {
   public let targetLanguage: TokenLanguage
   public let confidence: Double
   public let usedExplicitRule: Bool
+
+  public init(
+    original: String,
+    replacement: String,
+    targetLanguage: TokenLanguage,
+    confidence: Double,
+    usedExplicitRule: Bool
+  ) {
+    self.original = original
+    self.replacement = replacement
+    self.targetLanguage = targetLanguage
+    self.confidence = confidence
+    self.usedExplicitRule = usedExplicitRule
+  }
 }
 
 public enum NoCorrectionReason: Equatable, Sendable {

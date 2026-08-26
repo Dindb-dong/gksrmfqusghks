@@ -57,6 +57,10 @@ public enum FocusedElementSecurityInspector {
     }
 
     let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
+    return context(for: element)
+  }
+
+  static func context(for element: AXUIElement) -> FocusedElementContext {
     let state = classify(
       AccessibilityElementDescriptor(
         role: stringAttribute(kAXRoleAttribute as CFString, element: element),
