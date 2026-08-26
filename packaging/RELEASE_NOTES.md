@@ -10,6 +10,7 @@ Highlights:
 - Clipboard-free verified range replacement and post-success input-source switching.
 - Manual selection/last-word conversion, strict one-step Undo, optional global shortcuts.
 - Explicit local Always/Never pairs and app exclusions with export, reset, and corruption recovery.
+- Persisted automatic-correction opt-in with independent login launch, correction announcement, and optional sound controls.
 - Privacy-first onboarding, accessible settings, and content-free diagnostics.
 
 Requirements: macOS 14+, ABC and 2-Set Korean input sources. Global automatic correction requires user-granted Input Monitoring and Accessibility permissions.

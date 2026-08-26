@@ -8,6 +8,7 @@
 - Verified clipboard-free AX range rewrite and post-success input-source switching.
 - Privacy-first onboarding, permission recovery, menu status, accessible Light/Dark settings.
 - Manual selection/last-word conversion, strict one-step Undo, optional global shortcuts.
-- Atomic local Always/Never learning rules with corruption recovery, export, and reset.
+- Persisted automatic-correction opt-in plus independent login launch, correction announcement, and optional sound controls.
+- Atomic private local Always/Never learning rules and app exclusions with corruption recovery, export, and reset.
 - Protected live surfaces for browser address bars, terminals, IDEs, password managers, remote desktops, secure and unknown fields.
 - Universal arm64/x86_64 Developer ID, Hardened Runtime, notarized DMG release pipeline with SBOM and checksums.

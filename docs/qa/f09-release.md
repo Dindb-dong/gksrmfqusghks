@@ -1,17 +1,21 @@
 # F09 Release Verification
 
-Date: 2026-08-27  
-Version: 1.0.0 (1)  
+Date: 2026-08-27
+
+Version: 1.0.0 (1)
+
 Bundle ID: `com.dindbdong.hankey`
 
 ## Build and artifact gates
 
-- `./scripts/check.sh`: 63 tests, strict format, no-network, no-clipboard/whole-field-AX/logging, ad-hoc Hardened Runtime app — passed.
+- `./scripts/check.sh`: 68 tests, strict format, no-network, no-clipboard/whole-field-AX/logging, ad-hoc Hardened Runtime app — passed.
 - `packaging/build-universal-app.sh`: SwiftPM arm64+x86_64 Release, compiled asset catalog, embedded SPDX SBOM — passed.
 - `packaging/package-release.sh`: versioned ZIP, signed UDZO DMG, SPDX JSON, SHA-256 manifest — passed.
 - `packaging/verify-release.sh`: signature, both architectures, icon/SBOM resources, ZIP integrity, DMG checksum/mount, nested app, SHA-256 — passed.
 
 ## Signing and notarization
+
+The submission IDs and checksums in this section belong to the signed `0d9bc7c` branch candidate. Direct signature verification still passes, but the candidate predates the review-driven settings and storage fixes and is not publishable. A new candidate from the final reviewed commit must replace this evidence before merge.
 
 - Identity: Developer ID Application, Team `7995Q7WAZF`
 - Hardened Runtime: code directory runtime flag present
@@ -31,6 +35,15 @@ Bundle ID: `com.dindbdong.hankey`
 | `HanKey-1.0.0.spdx.json` | 883 bytes | `d540a9830ad1200428f7067b1d52ffe7ae30ca8e4351e0e31b0858c87f6c66c3` |
 
 Checksums above describe the branch candidate created before the final PR merge. The release job regenerates and records the publishable merged-main checksums; notarization and Gatekeeper status must remain identical.
+
+## Review-driven release gates
+
+- Automatic-correction opt-in now persists across relaunch and resumes only after onboarding with both permissions ready.
+- Login launch uses `SMAppService` with enabled, disabled, approval-required, and unavailable states shown independently.
+- Correction announcements and effect sound are independent; sound remains off by default.
+- User app exclusions are revalidated after the run-loop delay and immediately before any automatic text read or mutation.
+- Local rules use atomic writes, failed persistence rolls back in-memory state, the directory/file modes are 0700/0600, and permission-hardening failure does not quarantine valid JSON as corrupt.
+- Structural review retains a performance WATCH for per-event post-callback AX context checks; live TCC latency evidence remains required before production completion.
 
 ## Remaining interactive gate
 

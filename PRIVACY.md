@@ -15,11 +15,11 @@
 
 ## 이 Mac에 저장되는 데이터
 
-- 온보딩 완료, 알림, 자동 교정, 단축키 같은 기능 설정
+- 온보딩 완료, 알림, 효과음, 자동 교정, 로그인 실행, 단축키 같은 기능 설정
 - 사용자가 직접 추가한 Always/Never 단어 쌍
 - 사용자가 직접 추가한 앱 제외 bundle ID
 
-키 입력 버퍼와 마지막 Undo 기록은 메모리에만 존재하며 앱을 종료하면 사라집니다. 단어 규칙과 앱 제외는 `~/Library/Application Support/HanKey/learning-rules.json`에 저장됩니다.
+키 입력 버퍼와 마지막 Undo 기록은 메모리에만 존재하며 앱을 종료하면 사라집니다. 단어 규칙과 앱 제외는 `~/Library/Application Support/HanKey/learning-rules.json`에 원자적으로 저장되며 디렉터리는 사용자 전용, 파일은 소유자 읽기·쓰기 권한으로 제한됩니다.
 
 ## 권한
 
