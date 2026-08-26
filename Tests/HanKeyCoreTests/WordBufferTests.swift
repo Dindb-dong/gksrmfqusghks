@@ -55,7 +55,7 @@ final class WordBufferTests: XCTestCase {
   func testFocusNavigationPointerAndCommandInvalidationsPurge() throws {
     for reason in [
       BufferInvalidationReason.applicationChanged, .focusChanged, .pointerInteraction, .navigation,
-      .modifiedCommand, .inputSourceChanged, .unknownKey,
+      .modifiedCommand, .inputSourceChanged, .systemStateChanged, .unknownKey,
     ] {
       var buffer = WordBuffer()
       _ = buffer.handle(
