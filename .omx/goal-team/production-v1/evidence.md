@@ -13,7 +13,8 @@
 |---|---|---|---|---|---|
 | F00 Repository bootstrap | `main` | `b9eb885` | docs format and remote checks | published to public `main` | n/a |
 | F01 Native scaffold | `feature/native-scaffold`, PR #1 | `a5bf7d9` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F02 Dubeolsik core | `feature/dubeolsik-core` | `43424c4`, `7363b27` | local checks passed | pending | pending |
+| F02 Dubeolsik core | `feature/dubeolsik-core`, PR #2 | `77bd9d0` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F03 Safety detector | `feature/safety-detector` | `5d9ad5e`, `d4a7379` | local checks passed | pending | pending |
 
 ## F01 verification
 
@@ -35,6 +36,17 @@
 - Covered Shift double consonants and shifted vowels, compound medials, simple-final migration, compound-final splitting, standalone compatibility jamo, unsupported scalar preservation, and canonical NFD conjoining jamo.
 - Structural scope review: conversion files import no Foundation/AppKit/platform framework; physical key state is an immutable Sendable value; the converter performs deterministic layout conversion only and does not make automatic safety decisions reserved for F03.
 - Runtime/privacy impact: no persistence, event observation, logging, network path, dependency, or language asset added.
+
+## F03 verification
+
+- `swift test --filter HanKeyCoreTests`: 19 core tests passed before the final high-entropy fixture; targeted high-entropy regression also passed.
+- `./scripts/check.sh`: all 20 repository tests passed; Swift format lint, runtime no-network scan, and Release app build/signing passed.
+- Protected surfaces fail closed for secure fields, password managers, browser address bars, terminals, IDEs, and remote desktops.
+- Adversarial filters cover URL, email, IP/path, UUID, long hex hash, numeric, snake_case, camelCase, ALL_CAPS, punctuation, mixed script, and letters-only high entropy.
+- Product detector cases pass: known Korean evidence corrects `gksrmffh → 한글로`; strong malformed-jamo evidence corrects `ㅛㅐㅜㄴ댜 → yonsei`; known originals and unknown ASCII-to-Hangul candidates remain unchanged.
+- Explicit Always rules cannot override protected surfaces; Never rules stop an otherwise eligible correction.
+- Plan adaptation: no third-party dictionary/n-gram asset is bundled. ADR 0001 uses local `NSSpellChecker` only as injected positive evidence and fails closed when unavailable; core tests remain deterministic.
+- Structural scope review: hard safety precedes rules/scoring, decisions remain value-based and Sendable in core, AppKit spell checking stays in `HanKeyPlatformMac`, and no event/persistence/network behavior is activated.
 
 ## Structural review
 
