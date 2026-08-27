@@ -134,6 +134,9 @@ public final class TerminalCorrectionCoordinator {
     }
     var expectedCaret: FocusedTextSnapshot?
     for attempt in 0..<settlingAttempts {
+      if boundary == .questionMark {
+        expectedCaret = nil
+      }
       await delay()
       guard currentSequence() == expectedEventSequence else {
         return .cancelled(.eventSequenceChanged)

@@ -294,6 +294,45 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
+  func testCmuxQuestionCaretDisappearsBeforeCommitCancels() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        guard delayCount < 4 else { return nil }
+        return FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 0, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: { delayCount += 1 }
+    )
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: "좀ㅅ",
+        replacement: "what",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .questionMark,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(result, .cancelled(.selectionUnavailable))
+    XCTAssertTrue(writer.rewrites.isEmpty)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   func testOpaqueFocusChangeImmediatelyBeforeMutationCancels() async {
     let writer = FakeTerminalWriter()
     let sources = FakeTerminalInputSources(language: .english)
