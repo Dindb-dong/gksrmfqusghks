@@ -21,7 +21,7 @@ struct SettingsView: View {
   @State private var ruleReplacement = ""
   @State private var ruleBehavior: LearningRuleBehavior = .never
   @State private var confirmsLearningReset = false
-  @State private var excludedBundleIdentifier = ""
+  @State private var showsApplicationPicker = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -58,6 +58,14 @@ struct SettingsView: View {
     .task {
       model.refreshLaunchAtLoginStatus()
     }
+    .sheet(isPresented: $showsApplicationPicker) {
+      InstalledApplicationPicker(
+        excludedBundleIdentifiers: Set(model.excludedApplications),
+        ownBundleIdentifier: Bundle.main.bundleIdentifier
+      ) { application in
+        model.addExcludedApplication(application.bundleIdentifier)
+      }
+    }
   }
 
   @ViewBuilder
@@ -89,9 +97,11 @@ struct SettingsView: View {
           set: { model.setLaunchAtLoginEnabled($0) }
         )
       )
-      .disabled(model.isUpdatingLaunchAtLogin || model.launchAtLoginStatus == .unavailable)
+      .disabled(model.isUpdatingLaunchAtLogin)
       LabeledContent("로그인 실행 상태", value: model.launchAtLoginStatus.title)
-      if model.launchAtLoginStatus == .requiresApproval {
+      if model.launchAtLoginStatus == .requiresApproval
+        || model.launchAtLoginStatus == .repairRequired
+      {
         Button("로그인 항목 설정 열기") {
           model.openLoginItemsSettings()
         }
@@ -140,22 +150,38 @@ struct SettingsView: View {
     Section("자동으로 보호되는 곳") {
       Label("비밀번호·보안 입력", systemImage: "lock.shield")
       Label("브라우저 주소창", systemImage: "link")
-      Label("터미널·IDE·원격 데스크톱", systemImage: "terminal")
+      Label("IDE·원격 데스크톱", systemImage: "desktopcomputer")
       Text("지원 여부를 확신할 수 없으면 교정하지 않습니다. 클립보드 fallback도 사용하지 않습니다.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
 
+    Section("터미널") {
+      Toggle(
+        "터미널에서 자연어 자동 교정",
+        isOn: Binding(
+          get: { model.isTerminalCorrectionEnabled },
+          set: { model.setTerminalCorrectionEnabled($0) }
+        )
+      )
+      Text(
+        "cmux·Terminal·iTerm2 등에서 Space로 끝난 고신뢰 단어만 교정합니다. Enter, Tab, 문장부호, 경로·주소·옵션은 바꾸지 않습니다."
+      )
+      .font(.footnote)
+      .foregroundStyle(.secondary)
+      Label(
+        "터미널은 선택 문자열 검증이 불가능해 이 기능은 기본으로 꺼져 있습니다. 비밀번호 입력 전에는 터미널의 Secure Keyboard Entry도 켜세요.",
+        systemImage: "exclamationmark.shield"
+      )
+      .font(.footnote)
+      .foregroundStyle(.secondary)
+    }
+
     Section("사용자 앱 제외") {
-      TextField("Bundle ID (예: com.example.Editor)", text: $excludedBundleIdentifier)
       HStack {
-        Button("Bundle ID 추가") {
-          model.addExcludedApplication(excludedBundleIdentifier)
-          if model.learningMessage == "앱 제외를 저장했습니다." {
-            excludedBundleIdentifier = ""
-          }
+        Button("설치된 앱 선택…") {
+          showsApplicationPicker = true
         }
-        .disabled(excludedBundleIdentifier.isEmpty)
         Button("최근 사용 앱 제외") {
           model.excludeRecentlyUsedApplication()
         }
@@ -170,8 +196,7 @@ struct SettingsView: View {
       } else {
         ForEach(model.excludedApplications, id: \.self) { bundleIdentifier in
           HStack {
-            Text(bundleIdentifier)
-              .textSelection(.enabled)
+            ExcludedApplicationLabel(bundleIdentifier: bundleIdentifier)
             Spacer()
             Button(role: .destructive) {
               model.removeExcludedApplication(bundleIdentifier)
@@ -179,7 +204,7 @@ struct SettingsView: View {
               Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("\(bundleIdentifier) 앱 제외 삭제")
+            .accessibilityLabel("제외 앱 삭제")
           }
         }
       }

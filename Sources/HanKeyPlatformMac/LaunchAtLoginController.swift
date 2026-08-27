@@ -4,7 +4,7 @@ public enum LaunchAtLoginStatus: Equatable, Sendable {
   case notRegistered
   case enabled
   case requiresApproval
-  case unavailable
+  case repairRequired
 
   public var isEnabled: Bool {
     self == .enabled
@@ -15,7 +15,7 @@ public enum LaunchAtLoginStatus: Equatable, Sendable {
     case .notRegistered: "꺼짐"
     case .enabled: "켜짐"
     case .requiresApproval: "시스템 설정 승인 필요"
-    case .unavailable: "사용할 수 없음"
+    case .repairRequired: "등록 복구 필요"
     }
   }
 }
@@ -52,8 +52,8 @@ public final class LaunchAtLoginController {
     case .notRegistered: .notRegistered
     case .enabled: .enabled
     case .requiresApproval: .requiresApproval
-    case .notFound: .unavailable
-    @unknown default: .unavailable
+    case .notFound: .repairRequired
+    @unknown default: .repairRequired
     }
   }
 }

@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-08-26
+- Last refreshed: 2026-08-27
 - Primary product surfaces: 첫 실행 온보딩, 메뉴 막대 상태 메뉴, 설정, 로컬 학습 목록, 비침해 교정 알림
 - Evidence reviewed: `PRD.md`, macOS 시스템 설정과 메뉴 막대 관례, Apple 입력 모니터링·손쉬운 사용 권한 흐름, 유사 macOS 입력 도구의 공개 UX
 - Assumption: 사용자는 자동화보다 키 입력에 대한 통제와 신뢰를 먼저 확인합니다.
@@ -24,7 +24,7 @@
 
 - Primary personas: 한국어·영어를 오가는 일반 사용자, 개발자와 지식 근로자, 개인정보 보호 민감 사용자
 - User jobs: 잘못 입력한 단어 복구, 현재 입력 언어 지속, 위험한 앱에서는 자동화 차단, 저장 데이터 확인
-- Key contexts of use: 메신저, 이메일, 브라우저 본문, 문서 작성, 검색; 터미널과 주소창은 보호 문맥
+- Key contexts of use: 메신저, 이메일, 브라우저 본문, 문서 작성, 검색; 터미널은 명시적 전용 모드에서만 지원하고 주소창은 항상 보호
 
 ## Information architecture
 
@@ -52,7 +52,7 @@
 ## Components
 
 - Existing components to reuse: SwiftUI `Settings`, `Form`, `Toggle`, `Picker`, `Table`, `MenuBarExtra`, 표준 권한 링크 버튼
-- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, ExceptionList, LocalOnlyDisclosure, CompatibilityBadge
+- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, LocalOnlyDisclosure, CompatibilityBadge
 - Variants and states: normal, paused, permission-required, secure-input, excluded, unsupported, error
 - Token/component ownership: App target이 화면을 소유하고 Core 모듈은 사용자 표시 타입을 의존하지 않습니다.
 
@@ -76,7 +76,7 @@
 - Empty: 학습 목록이 비었음을 개인정보 이점과 함께 설명
 - Error: 실패 원인, 영향, 복구 버튼, 안전한 현재 동작을 함께 표시
 - Success: 권한 준비 완료와 샘플 교정 성공을 명시
-- Disabled: 왜 비활성인지와 필요한 선행 조건을 인접 설명
+- Disabled: 왜 비활성인지와 필요한 선행 조건을 인접 설명. 복구 가능한 시스템 상태를 단순히 비활성화하지 않음
 - Offline/slow network: 런타임 네트워크 기능이 없으므로 오프라인이 정상 상태
 
 ## Content voice
@@ -92,6 +92,27 @@
 - Performance constraints: 이벤트 처리 경로는 UI 렌더링과 분리, 상태 알림이 타이핑을 막지 않음
 - Compatibility constraints: macOS 14+ 우선; Light/Dark, VoiceOver, Reduce Motion, 다중 모니터 지원
 - Test/screenshot expectations: 핵심 상태별 SwiftUI preview, 접근성 식별자, 온보딩·설정 스크린샷 QA, 메뉴 막대 상태 수동 QA
+
+## Desktop reliability flows
+
+### 로그인 시 실행
+
+- `SMAppService.mainApp`의 `.notFound`는 영구 미지원이 아니라 등록 복구가 필요한 오류 상태로 표시합니다.
+- 토글은 등록 시도를 막지 않으며, 실패하면 재시도와 시스템 로그인 항목 열기 경로를 제공합니다.
+- `.requiresApproval`에서는 시스템 설정 승인이 필요함을 토글 바로 옆에 설명합니다.
+
+### 터미널 전용 모드
+
+- 터미널은 일반 편집기와 다른 명시적 opt-in 설정으로 제공합니다. 비밀번호 관리자·원격 데스크톱은 계속 지원하지 않습니다.
+- AX 범위 교체가 불가능한 터미널에서는 물리 이벤트 버퍼와 현재 PID·포커스·caret selection·입력 소스·이벤트 세대를 교정 직전에 다시 확인합니다.
+- 자동 교정은 Space로 끝난 고신뢰 자연어 토큰만 허용합니다. Enter, Tab, 문장부호, 경로·URL·옵션·식별자·고엔트로피 토큰은 실패 폐쇄합니다.
+- 설명은 클립보드를 쓰지 않는다는 사실과 일반 편집기보다 보수적으로 동작한다는 한계를 함께 알립니다. caret range를 제공하지 않는 터미널은 지원하지 않습니다.
+
+### 제외 앱 선택
+
+- 사용자는 번들 ID를 입력하거나 볼 필요가 없습니다. 설정은 설치 앱을 로컬에서 검색해 이름·아이콘으로 선택하는 시트를 엽니다.
+- 검색 결과와 제외 목록은 앱 이름을 기본 레이블로 사용하고, 앱이 제거된 경우에만 이해 가능한 대체 이름과 `설치되지 않음` 상태를 표시합니다.
+- 선택기는 키보드 검색과 VoiceOver 이름을 지원하며 HanKey 자체와 이미 제외된 앱은 선택할 수 없습니다.
 
 ## Open questions
 
