@@ -1,7 +1,7 @@
 import Foundation
 
 public struct BoundarySafetyPolicy: Sendable {
-  private static let unsafeContinuationCharacters = CharacterSet(charactersIn: ".@/\\_-")
+  private static let unsafeContinuationCharacters = CharacterSet(charactersIn: ".@/\\_-?")
 
   public init() {}
 

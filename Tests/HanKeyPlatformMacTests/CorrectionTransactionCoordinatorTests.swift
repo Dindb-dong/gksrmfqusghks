@@ -47,7 +47,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(rewriter.document, "한글로,")
   }
 
-  func testPreservesSpaceTypedImmediatelyAfterPunctuation() async {
+  func testQuestionMarkFailsClosedEvenWhenFollowedBySpace() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh? ", caret: 10, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)
     let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
@@ -58,16 +58,14 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       expectedFocus: identity
     )
 
-    guard case .corrected(let record) = result else {
-      return XCTFail("Expected a committed correction, got \(result)")
-    }
-    XCTAssertEqual(rewriter.document, "한글로? ")
-    XCTAssertEqual(record.originalWithBoundary, "gksrmffh? ")
-    XCTAssertEqual(record.replacementWithBoundary, "한글로? ")
+    XCTAssertEqual(result, .cancelled(.unsafeBoundary))
+    XCTAssertEqual(rewriter.document, "gksrmffh? ")
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
   func testPreservesRapidPunctuationClusterAndTrailingSpace() async {
-    let rewriter = FakeTextRewriter(document: "gksrmffh?! ", caret: 11, identity: identity)
+    let rewriter = FakeTextRewriter(document: "gksrmffh!! ", caret: 11, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)
     let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
 
@@ -80,13 +78,13 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     guard case .corrected = result else {
       return XCTFail("Expected a committed correction, got \(result)")
     }
-    XCTAssertEqual(rewriter.document, "한글로?! ")
+    XCTAssertEqual(rewriter.document, "한글로!! ")
   }
 
   func testPreservesEverySpecialSymbolBoundary() async {
     let symbols = [
       "~", "`", "!", "#", "$", "%", "^", "&", "*", "(", ")", "=", "+", "[", "{",
-      "]", "}", "|", ";", ":", "'", "\"", ",", "<", ">", "?", "§", "±", "¥",
+      "]", "}", "|", ";", ":", "'", "\"", ",", "<", ">", "§", "±", "¥",
       "©", "™", "€", "√", "∞", "•", "…",
     ]
 
@@ -114,7 +112,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
   }
 
   func testAddressPathAndIdentifierBoundariesFailClosedEvenForProposal() async {
-    for symbol in ["@", "/", "\\", ".", "_", "-"] {
+    for symbol in ["@", "/", "\\", ".", "_", "-", "?"] {
       let original = "gksrmffh\(symbol)"
       let rewriter = FakeTextRewriter(
         document: original,
