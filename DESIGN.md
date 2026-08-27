@@ -52,7 +52,7 @@
 ## Components
 
 - Existing components to reuse: SwiftUI `Settings`, `Form`, `Toggle`, `Picker`, `Table`, `MenuBarExtra`, 표준 권한 링크 버튼
-- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, LocalOnlyDisclosure, CompatibilityBadge
+- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge
 - Variants and states: normal, paused, permission-required, secure-input, excluded, unsupported, error
 - Token/component ownership: App target이 화면을 소유하고 Core 모듈은 사용자 표시 타입을 의존하지 않습니다.
 
@@ -113,6 +113,13 @@
 - 사용자는 번들 ID를 입력하거나 볼 필요가 없습니다. 설정은 설치 앱을 로컬에서 검색해 이름·아이콘으로 선택하는 시트를 엽니다.
 - 검색 결과와 제외 목록은 앱 이름을 기본 레이블로 사용하고, 앱이 제거된 경우에만 이해 가능한 대체 이름과 `설치되지 않음` 상태를 표시합니다.
 - 선택기는 키보드 검색과 VoiceOver 이름을 지원하며 HanKey 자체와 이미 제외된 앱은 선택할 수 없습니다.
+
+### 변환 제외 학습
+
+- 단순히 같은 입력을 반복한 것만으로는 사용자 의도를 학습하지 않습니다.
+- `자동 교정 성공 → 같은 포커스에서 교정 결과 전체를 Backspace로 삭제 → 같은 물리 입력 재완료`가 연속으로 확인될 때만 `변환하지 않음` 규칙을 저장합니다.
+- 포커스 이동, 포인터·탐색·명령 키, 다른 입력, 삭제 수 부족·초과가 끼면 학습 후보를 즉시 폐기합니다.
+- 설정의 별도 `변환 제외` 탭에서 자동 학습과 직접 추가 항목을 동일하게 보여주며, 원문과 반대 레이아웃 후보를 함께 표시하고 즉시 삭제할 수 있습니다.
 
 ## Open questions
 
