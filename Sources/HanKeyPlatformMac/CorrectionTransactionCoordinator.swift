@@ -59,7 +59,7 @@ public final class CorrectionTransactionCoordinator {
         located: (range: TextUTF16Range, text: String, boundary: String)
       )?
     var observedSnapshot = false
-    for _ in 0..<verificationAttempts {
+    for attempt in 0..<verificationAttempts {
       await delay()
       guard !Task.isCancelled else {
         return .cancelled(.cancelled)
@@ -86,6 +86,9 @@ public final class CorrectionTransactionCoordinator {
       else {
         continue
       }
+      if boundary == .questionMark, attempt < verificationAttempts - 1 {
+        continue
+      }
       committedText = (snapshot, locatedText)
       break
     }
@@ -101,7 +104,12 @@ public final class CorrectionTransactionCoordinator {
     let replacedRange = locatedText.range
     let observedText = locatedText.text
     let boundaryText = locatedText.boundary
-    guard BoundarySafetyPolicy().permitsAutomaticCorrection(boundary: boundaryText) else {
+    guard
+      BoundarySafetyPolicy().permitsAutomaticCorrection(
+        boundary: boundaryText,
+        allowsNaturalQuestionMark: boundary == .questionMark
+      )
+    else {
       return .cancelled(.unsafeBoundary)
     }
     let replacementWithBoundary = proposal.replacement + boundaryText
@@ -223,6 +231,14 @@ public final class CorrectionTransactionCoordinator {
         Self.specialBoundaryCharacters.contains($0)
           || CharacterSet.whitespacesAndNewlines.contains($0)
       } ? suffix : nil
+    case .questionMark:
+      guard suffix.first == "?" else {
+        return nil
+      }
+      return suffix.unicodeScalars.dropFirst().allSatisfy {
+        Self.specialBoundaryCharacters.contains($0)
+          || CharacterSet.whitespacesAndNewlines.contains($0)
+      } ? suffix : nil
     }
   }
 
@@ -233,7 +249,7 @@ public final class CorrectionTransactionCoordinator {
   ) -> (range: TextUTF16Range, text: String, boundary: String)? {
     let boundaryLengths: [Int]
     switch boundary {
-    case .space, .punctuation:
+    case .space, .punctuation, .questionMark:
       boundaryLengths = Array((1...4).reversed())
     case .returnKey, .tab:
       boundaryLengths = [1, 0]

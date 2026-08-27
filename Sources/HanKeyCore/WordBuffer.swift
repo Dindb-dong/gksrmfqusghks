@@ -3,6 +3,7 @@ public enum WordBoundary: String, Equatable, Sendable {
   case returnKey
   case tab
   case punctuation
+  case questionMark
 }
 
 public enum BufferInvalidationReason: String, Equatable, Sendable {

@@ -725,25 +725,33 @@ final class AppModel {
       guard let self else { return }
       switch result {
       case .corrected(let record):
-        beginDeletionTracking(
-          word: word,
-          focusIdentity: focusIdentity,
-          surface: .terminal,
-          correctionStart: record.correctionStart,
-          correctedCaretLocation: record.correctedCaretLocation
-        )
+        if record.supportsDeletionTracking {
+          beginDeletionTracking(
+            word: word,
+            focusIdentity: focusIdentity,
+            surface: .terminal,
+            correctionStart: record.correctionStart,
+            correctedCaretLocation: record.correctedCaretLocation
+          )
+        } else {
+          clearDeletionTracking()
+        }
         lastCorrectionRecord = nil
         pendingNeverRecord = nil
         correctionActivity = .corrected
         deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
-        beginDeletionTracking(
-          word: word,
-          focusIdentity: focusIdentity,
-          surface: .terminal,
-          correctionStart: record.correctionStart,
-          correctedCaretLocation: record.correctedCaretLocation
-        )
+        if record.supportsDeletionTracking {
+          beginDeletionTracking(
+            word: word,
+            focusIdentity: focusIdentity,
+            surface: .terminal,
+            correctionStart: record.correctionStart,
+            correctedCaretLocation: record.correctedCaretLocation
+          )
+        } else {
+          clearDeletionTracking()
+        }
         lastCorrectionRecord = nil
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed

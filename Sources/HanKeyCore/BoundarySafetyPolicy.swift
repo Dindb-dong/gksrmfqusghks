@@ -5,9 +5,15 @@ public struct BoundarySafetyPolicy: Sendable {
 
   public init() {}
 
-  public func permitsAutomaticCorrection(boundary: String) -> Bool {
+  public func permitsAutomaticCorrection(
+    boundary: String,
+    allowsNaturalQuestionMark: Bool = false
+  ) -> Bool {
     !boundary.unicodeScalars.contains {
-      Self.unsafeContinuationCharacters.contains($0)
+      if allowsNaturalQuestionMark, $0 == "?" {
+        return false
+      }
+      return Self.unsafeContinuationCharacters.contains($0)
     }
   }
 }
