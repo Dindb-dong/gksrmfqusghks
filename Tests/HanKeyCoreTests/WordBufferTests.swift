@@ -30,6 +30,98 @@ final class WordBufferTests: XCTestCase {
     XCTAssertEqual(word.qwerty, "gksr")
   }
 
+  func testCapturesSupportedLeadingCommandPrefixesWithoutAddingThemToToken() throws {
+    let cases: [(observations: [BufferObservation], expected: LeadingCommandPrefix)] = [
+      ([.commandPrefixSymbol(.slash)], .slash),
+      ([.commandPrefixSymbol(.hyphen)], .singleHyphen),
+      ([.commandPrefixSymbol(.hyphen), .commandPrefixSymbol(.hyphen)], .doubleHyphen),
+    ]
+
+    for testCase in cases {
+      var buffer = WordBuffer()
+      for observation in testCase.observations {
+        XCTAssertEqual(buffer.handle(observation, at: 1), .none)
+      }
+      for token in try tokens("compact") {
+        XCTAssertEqual(buffer.handle(.printable(token), at: 2), .none)
+      }
+
+      XCTAssertEqual(
+        buffer.handle(.boundary(.space), at: 3),
+        .completed(
+          BufferedWord(
+            tokens: try tokens("compact"),
+            leadingCommandPrefix: testCase.expected
+          ),
+          boundary: .space
+        )
+      )
+    }
+  }
+
+  func testNestedOrRepeatedPrefixesFailClosed() throws {
+    for testCase in [
+      (
+        observations: [
+          BufferObservation.commandPrefixSymbol(.slash), .commandPrefixSymbol(.slash),
+        ],
+        results: [WordBufferAction.none, .purged(.unknownKey)]
+      ),
+      (
+        observations: [
+          BufferObservation.commandPrefixSymbol(.hyphen), .commandPrefixSymbol(.hyphen),
+          .commandPrefixSymbol(.hyphen),
+        ],
+        results: [WordBufferAction.none, .none, .purged(.unknownKey)]
+      ),
+      (
+        observations: [
+          BufferObservation.commandPrefixSymbol(.slash), .commandPrefixSymbol(.hyphen),
+        ],
+        results: [WordBufferAction.none, .purged(.unknownKey)]
+      ),
+    ] {
+      var buffer = WordBuffer()
+      for (index, observation) in testCase.observations.enumerated() {
+        XCTAssertEqual(
+          buffer.handle(observation, at: UInt64(index + 1)),
+          testCase.results[index]
+        )
+      }
+      XCTAssertNil(buffer.leadingCommandPrefix)
+      for token in try tokens("compact") {
+        _ = buffer.handle(.printable(token), at: 3)
+      }
+      guard case .completed(let word, _) = buffer.handle(.boundary(.space), at: 4) else {
+        return XCTFail("Expected an ordinary word after invalid prefix")
+      }
+      XCTAssertNil(word.leadingCommandPrefix)
+    }
+  }
+
+  func testSlashInsideATokenDoesNotBecomeTheNextSegmentPrefix() throws {
+    var buffer = WordBuffer()
+    _ = buffer.handle(.commandPrefixSymbol(.slash), at: 1)
+    for token in try tokens("usr") {
+      _ = buffer.handle(.printable(token), at: 2)
+    }
+
+    XCTAssertEqual(
+      buffer.handle(.commandPrefixSymbol(.slash), at: 3),
+      .completed(
+        BufferedWord(tokens: try tokens("usr"), leadingCommandPrefix: .slash),
+        boundary: .punctuation
+      )
+    )
+    for token in try tokens("compact") {
+      _ = buffer.handle(.printable(token), at: 4)
+    }
+    guard case .completed(let word, _) = buffer.handle(.boundary(.space), at: 5) else {
+      return XCTFail("Expected the path segment to complete")
+    }
+    XCTAssertNil(word.leadingCommandPrefix)
+  }
+
   func testWordAndLineDeletionPurgeUnknownBufferExtent() throws {
     for deletion in [BackwardDeletionKind.word, .line] {
       var buffer = WordBuffer()

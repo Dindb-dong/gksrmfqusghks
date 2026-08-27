@@ -41,6 +41,84 @@ final class CorrectionDecisionEngineTests: XCTestCase {
     XCTAssertEqual(proposal.targetLanguage, .english)
   }
 
+  func testCommandPrefixesCorrectOnlyHighConfidenceMalformedKorean() throws {
+    let slashOriginal = DubeolsikConverter.compose("compact")
+    XCTAssertEqual(slashOriginal, "채ㅡㅔㅁㅊㅅ")
+    XCTAssertEqual(
+      try correction(
+        for: request(
+          token: slashOriginal,
+          activeLanguage: .korean,
+          leadingCommandPrefix: .slash,
+          originalKnown: true,
+          candidateKnown: true
+        )
+      ).replacement,
+      "compact"
+    )
+
+    let optionOriginal = DubeolsikConverter.compose("help")
+    XCTAssertEqual(
+      try correction(
+        for: request(
+          token: optionOriginal,
+          activeLanguage: .korean,
+          leadingCommandPrefix: .doubleHyphen,
+          candidateKnown: true
+        )
+      ).replacement,
+      "help"
+    )
+
+    let shortOptionOriginal = DubeolsikConverter.compose("v")
+    XCTAssertEqual(
+      try correction(
+        for: request(
+          token: shortOptionOriginal,
+          activeLanguage: .korean,
+          leadingCommandPrefix: .singleHyphen
+        )
+      ).replacement,
+      "v"
+    )
+  }
+
+  func testCommandPrefixesFailClosedForKoreanUnknownAndProtectedInputs() {
+    XCTAssertEqual(
+      engine.decide(
+        request(
+          token: "도움말",
+          activeLanguage: .korean,
+          leadingCommandPrefix: .slash,
+          candidateKnown: true
+        )
+      ),
+      .noCorrection(.insufficientCandidateEvidence)
+    )
+    XCTAssertEqual(
+      engine.decide(
+        request(
+          token: "ㅁㅠㅊ",
+          activeLanguage: .korean,
+          leadingCommandPrefix: .slash
+        )
+      ),
+      .noCorrection(.insufficientCandidateEvidence)
+    )
+    XCTAssertEqual(
+      engine.decide(
+        request(
+          token: DubeolsikConverter.compose("compact"),
+          activeLanguage: .korean,
+          surface: .browserAddressBar,
+          leadingCommandPrefix: .slash,
+          candidateKnown: true
+        )
+      ),
+      .noCorrection(.unsafe(.protectedSurface))
+    )
+  }
+
   func testKnownOriginalAndUnknownCandidateAreNotCorrected() {
     XCTAssertEqual(
       engine.decide(
@@ -110,6 +188,7 @@ final class CorrectionDecisionEngineTests: XCTestCase {
     activeLanguage: TokenLanguage,
     surface: InputSurface = .standardText,
     explicitRule: ExplicitCorrectionRule = .none,
+    leadingCommandPrefix: LeadingCommandPrefix? = nil,
     originalKnown: Bool = false,
     candidateKnown: Bool = false
   ) -> CorrectionRequest {
@@ -121,7 +200,8 @@ final class CorrectionDecisionEngineTests: XCTestCase {
       lexiconEvidence: LexiconEvidence(
         originalIsKnown: originalKnown,
         candidateIsKnown: candidateKnown
-      )
+      ),
+      leadingCommandPrefix: leadingCommandPrefix
     )
   }
 

@@ -49,7 +49,8 @@ public struct TokenSafetyClassifier: Sendable {
   public func classify(
     token: String,
     surface: InputSurface,
-    isApplicationExcluded: Bool = false
+    isApplicationExcluded: Bool = false,
+    leadingCommandPrefix: LeadingCommandPrefix? = nil
   ) -> TokenSafetyResult {
     if surface.prohibitsAutomaticCorrection {
       return .excluded(.protectedSurface)
@@ -57,7 +58,9 @@ public struct TokenSafetyClassifier: Sendable {
     if isApplicationExcluded {
       return .excluded(.excludedApplication)
     }
-    if token.count < minimumLength {
+    let isSingleLetterOption =
+      leadingCommandPrefix == .singleHyphen && token.count == 1
+    if token.count < minimumLength, !isSingleLetterOption {
       return .excluded(.tooShort)
     }
     if token.count > maximumLength {

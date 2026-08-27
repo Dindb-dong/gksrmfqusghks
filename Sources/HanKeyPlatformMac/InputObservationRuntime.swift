@@ -166,7 +166,7 @@ public final class InputObservationRuntime {
     switch observation {
     case .deleteBackward(let kind): .deletion(kind)
     case .invalidate(let reason): .invalidated(reason)
-    case .printable, .boundary, .protectionChanged: .nonDeletionInput
+    case .printable, .commandPrefixSymbol, .boundary, .protectionChanged: .nonDeletionInput
     }
   }
 

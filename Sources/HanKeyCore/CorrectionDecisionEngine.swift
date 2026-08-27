@@ -21,6 +21,7 @@ public struct CorrectionRequest: Equatable, Sendable {
   public let isApplicationExcluded: Bool
   public let explicitRule: ExplicitCorrectionRule
   public let lexiconEvidence: LexiconEvidence
+  public let leadingCommandPrefix: LeadingCommandPrefix?
 
   public init(
     token: String,
@@ -28,7 +29,8 @@ public struct CorrectionRequest: Equatable, Sendable {
     surface: InputSurface = .standardText,
     isApplicationExcluded: Bool = false,
     explicitRule: ExplicitCorrectionRule = .none,
-    lexiconEvidence: LexiconEvidence
+    lexiconEvidence: LexiconEvidence,
+    leadingCommandPrefix: LeadingCommandPrefix? = nil
   ) {
     self.token = token
     self.activeLanguage = activeLanguage
@@ -36,6 +38,7 @@ public struct CorrectionRequest: Equatable, Sendable {
     self.isApplicationExcluded = isApplicationExcluded
     self.explicitRule = explicitRule
     self.lexiconEvidence = lexiconEvidence
+    self.leadingCommandPrefix = leadingCommandPrefix
   }
 }
 
@@ -94,7 +97,8 @@ public struct CorrectionDecisionEngine: Sendable {
     switch safetyClassifier.classify(
       token: request.token,
       surface: request.surface,
-      isApplicationExcluded: request.isApplicationExcluded
+      isApplicationExcluded: request.isApplicationExcluded,
+      leadingCommandPrefix: request.leadingCommandPrefix
     ) {
     case .excluded(let reason):
       return .noCorrection(.unsafe(reason))
@@ -121,6 +125,21 @@ public struct CorrectionDecisionEngine: Sendable {
           usedExplicitRule: true
         )
       )
+    }
+
+    if permitsCommandCorrection(request: request, candidate: candidate) {
+      return .correct(
+        CorrectionProposal(
+          original: request.token,
+          replacement: candidate,
+          targetLanguage: request.activeLanguage.opposite,
+          confidence: 1,
+          usedExplicitRule: false
+        )
+      )
+    }
+    if request.leadingCommandPrefix != nil {
+      return .noCorrection(.insufficientCandidateEvidence)
     }
 
     if request.lexiconEvidence.originalIsKnown {
@@ -159,6 +178,32 @@ public struct CorrectionDecisionEngine: Sendable {
         usedExplicitRule: false
       )
     )
+  }
+
+  private func permitsCommandCorrection(
+    request: CorrectionRequest,
+    candidate: String
+  ) -> Bool {
+    guard
+      let prefix = request.leadingCommandPrefix,
+      request.activeLanguage == .korean,
+      candidate == candidate.lowercased(),
+      candidate.allSatisfy({ $0.isASCII && $0.isLetter })
+    else {
+      return false
+    }
+
+    let originalScore = scorer.score(request.token, as: .korean, isKnown: false)
+    switch prefix {
+    case .slash, .doubleHyphen:
+      return request.token.count >= 3
+        && originalScore.malformedScriptRatio >= 0.5
+        && request.lexiconEvidence.candidateIsKnown
+    case .singleHyphen:
+      return request.token.count == 1
+        && candidate.count == 1
+        && originalScore.malformedScriptRatio == 1
+    }
   }
 
   private func convertedCandidate(for request: CorrectionRequest) -> String {
