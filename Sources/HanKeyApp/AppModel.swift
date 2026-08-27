@@ -888,9 +888,9 @@ final class AppModel {
   ) {
     guard let rule = learningStore?.rules.entries.first(where: { $0.id == id }) else { return }
     switch decision {
-    case .accept:
+    case .keepExcluded:
       learningMessage = "변환 제외 규칙을 유지합니다."
-    case .rejectAndAlwaysConvert:
+    case .alwaysConvert:
       do {
         guard
           try learningStore?.upsert(
