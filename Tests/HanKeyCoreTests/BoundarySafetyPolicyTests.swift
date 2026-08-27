@@ -8,6 +8,15 @@ final class BoundarySafetyPolicyTests: XCTestCase {
     for boundary in ["", " ", "!", "~", "+", "$", "^", "()", "!! "] {
       XCTAssertTrue(policy.permitsAutomaticCorrection(boundary: boundary), boundary)
     }
+    for boundary in ["?", "? "] {
+      XCTAssertTrue(
+        policy.permitsAutomaticCorrection(
+          boundary: boundary,
+          allowsNaturalQuestionMark: true
+        ),
+        boundary
+      )
+    }
   }
 
   func testAddressPathAndIdentifierContinuationsFailClosed() {

@@ -59,7 +59,7 @@ final class GlobalInputEventTapTests: XCTestCase {
     )
     XCTAssertEqual(
       KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Slash), flags: .maskShift),
-      .boundary(.punctuation)
+      .boundary(.questionMark)
     )
     XCTAssertEqual(
       KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskShift),
@@ -95,7 +95,7 @@ final class GlobalInputEventTapTests: XCTestCase {
     )
     XCTAssertEqual(
       KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Slash), flags: .maskShift),
-      .boundary(.punctuation)
+      .boundary(.questionMark)
     )
   }
 

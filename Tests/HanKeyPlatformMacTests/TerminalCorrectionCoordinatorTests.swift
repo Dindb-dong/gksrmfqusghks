@@ -29,7 +29,10 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
         )
       )
     )
-    XCTAssertEqual(writer.rewrites, [.init(count: 8, replacement: "한글로", processID: 42)])
+    XCTAssertEqual(
+      writer.rewrites,
+      [.init(count: 8, replacement: "한글로", boundaryText: " ", processID: 42)]
+    )
     XCTAssertEqual(sources.selectedLanguages, [.korean])
   }
 
@@ -67,7 +70,10 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
         )
       )
     )
-    XCTAssertEqual(writer.rewrites, [.init(count: 6, replacement: "compact", processID: 42)])
+    XCTAssertEqual(
+      writer.rewrites,
+      [.init(count: 6, replacement: "compact", boundaryText: " ", processID: 42)]
+    )
     XCTAssertEqual(sources.selectedLanguages, [.english])
   }
 
@@ -117,7 +123,10 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
       return XCTFail("Expected delayed cmux caret to be retried, got \(result)")
     }
     XCTAssertEqual(record.correctionStart, 1)
-    XCTAssertEqual(writer.rewrites, [.init(count: 6, replacement: "compact", processID: 42)])
+    XCTAssertEqual(
+      writer.rewrites,
+      [.init(count: 6, replacement: "compact", boundaryText: " ", processID: 42)]
+    )
   }
 
   func testRetriesOnlyWhileTerminalCaretIsUnavailable() async {
@@ -160,6 +169,204 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     }
     XCTAssertEqual(delayCount, 4)
     XCTAssertEqual(writer.rewrites.count, 1)
+  }
+
+  func testCmuxOpaqueZeroCaretUsesRelativeCorrection() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    let coordinator = makeCoordinator(
+      writer: writer,
+      sources: sources,
+      initialCaret: 0,
+      correctedCaret: 0
+    )
+    let original = "좀ㅅ"
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: original,
+        replacement: "what",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    guard case .corrected(let record) = result else {
+      return XCTFail("Expected a stable opaque cmux caret to correct, got \(result)")
+    }
+    XCTAssertFalse(record.supportsDeletionTracking)
+    XCTAssertEqual(
+      writer.rewrites,
+      [.init(count: 2, replacement: "what", boundaryText: " ", processID: 42)]
+    )
+    XCTAssertEqual(sources.selectedLanguages, [.english])
+  }
+
+  func testCmuxOpaqueQuestionWaitsAndPreservesBoundary() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 0, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: { delayCount += 1 }
+    )
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: "좀ㅅ",
+        replacement: "what",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .questionMark,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    guard case .corrected(let record) = result else {
+      return XCTFail("Expected an opaque terminal question to correct, got \(result)")
+    }
+    XCTAssertFalse(record.supportsDeletionTracking)
+    XCTAssertEqual(delayCount, 5)
+    XCTAssertEqual(
+      writer.rewrites,
+      [.init(count: 2, replacement: "what", boundaryText: "?", processID: 42)]
+    )
+  }
+
+  func testCmuxQuestionContinuationCancelsBeforeMutation() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    var sequence: UInt64 = 9
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { sequence },
+      currentCaret: {
+        FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 0, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: {
+        delayCount += 1
+        if delayCount == 2 {
+          sequence = 10
+        }
+      }
+    )
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: "좀ㅅ",
+        replacement: "what",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .questionMark,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(result, .cancelled(.eventSequenceChanged))
+    XCTAssertTrue(writer.rewrites.isEmpty)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
+  func testCmuxQuestionCaretDisappearsBeforeCommitCancels() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        guard delayCount < 4 else { return nil }
+        return FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 0, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: { delayCount += 1 }
+    )
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: "좀ㅅ",
+        replacement: "what",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .questionMark,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(result, .cancelled(.selectionUnavailable))
+    XCTAssertTrue(writer.rewrites.isEmpty)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
+  func testOpaqueFocusChangeImmediatelyBeforeMutationCancels() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .english)
+    var contextReads = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: {
+        defer { contextReads += 1 }
+        return contextReads == 0
+          ? self.context()
+          : self.context(identity: FocusedElementIdentity(processID: 43, elementHash: 8))
+      },
+      currentSequence: { 9 },
+      currentCaret: {
+        FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 0, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: {}
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal,
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(result, .cancelled(.focusChanged))
+    XCTAssertTrue(writer.rewrites.isEmpty)
   }
 
   func testStableTerminalCorrectsWithoutWaitingThroughEveryRetryWindow() async {
@@ -246,7 +453,7 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
-  func testEveryNonSpaceBoundaryFailsClosedBeforeMutation() async {
+  func testEveryUnsupportedTerminalBoundaryFailsClosedBeforeMutation() async {
     for boundary in [WordBoundary.returnKey, .tab, .punctuation] {
       let writer = FakeTerminalWriter()
       let sources = FakeTerminalInputSources(language: .english)
@@ -407,6 +614,7 @@ private final class FakeTerminalWriter: TerminalEventRewriting {
   struct Rewrite: Equatable {
     let count: Int
     let replacement: String
+    let boundaryText: String
     let processID: Int32
   }
 
@@ -415,10 +623,16 @@ private final class FakeTerminalWriter: TerminalEventRewriting {
   func rewrite(
     originalCharacterCount: Int,
     replacement: String,
+    boundaryText: String,
     processID: Int32
   ) -> Bool {
     rewrites.append(
-      .init(count: originalCharacterCount, replacement: replacement, processID: processID))
+      .init(
+        count: originalCharacterCount,
+        replacement: replacement,
+        boundaryText: boundaryText,
+        processID: processID
+      ))
     return true
   }
 }

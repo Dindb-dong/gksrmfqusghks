@@ -29,15 +29,18 @@ public struct TerminalCorrectionRecord: Equatable, Sendable {
   public let focusIdentity: FocusedElementIdentity
   public let correctionStart: Int
   public let correctedCaretLocation: Int
+  public let supportsDeletionTracking: Bool
 
   public init(
     focusIdentity: FocusedElementIdentity,
     correctionStart: Int,
-    correctedCaretLocation: Int
+    correctedCaretLocation: Int,
+    supportsDeletionTracking: Bool = true
   ) {
     self.focusIdentity = focusIdentity
     self.correctionStart = correctionStart
     self.correctedCaretLocation = correctedCaretLocation
+    self.supportsDeletionTracking = supportsDeletionTracking
   }
 }
 
@@ -46,6 +49,7 @@ public protocol TerminalEventRewriting: AnyObject {
   func rewrite(
     originalCharacterCount: Int,
     replacement: String,
+    boundaryText: String,
     processID: Int32
   ) -> Bool
 }
@@ -113,7 +117,15 @@ public final class TerminalCorrectionCoordinator {
     isBusy = true
     defer { isBusy = false }
 
-    guard boundary == .space else { return .cancelled(.unsafeBoundary) }
+    let boundaryText: String
+    switch boundary {
+    case .space:
+      boundaryText = " "
+    case .questionMark:
+      boundaryText = "?"
+    case .returnKey, .tab, .punctuation:
+      return .cancelled(.unsafeBoundary)
+    }
     guard let sourceBefore = inputSources.currentSource() else {
       return .cancelled(.sourceUnavailable)
     }
@@ -121,7 +133,10 @@ public final class TerminalCorrectionCoordinator {
       return .cancelled(.sourceChanged)
     }
     var expectedCaret: FocusedTextSnapshot?
-    for _ in 0..<settlingAttempts {
+    for attempt in 0..<settlingAttempts {
+      if boundary == .questionMark {
+        expectedCaret = nil
+      }
       await delay()
       guard currentSequence() == expectedEventSequence else {
         return .cancelled(.eventSequenceChanged)
@@ -160,7 +175,10 @@ public final class TerminalCorrectionCoordinator {
       }
       if confirmation == candidateCaret {
         expectedCaret = confirmation
-        break
+        if boundary != .questionMark || attempt == settlingAttempts - 1 {
+          break
+        }
+        continue
       }
       let isSingleSpaceAdvance =
         confirmation.identity == candidateCaret.identity
@@ -175,15 +193,18 @@ public final class TerminalCorrectionCoordinator {
         return .cancelled(.selectionChanged)
       }
       expectedCaret = advancedConfirmation
-      break
+      if boundary != .questionMark || attempt == settlingAttempts - 1 {
+        break
+      }
     }
     guard let expectedCaret else { return .cancelled(.selectionUnavailable) }
-    let correctionStart = expectedCaret.selection.location - proposal.original.utf16.count - 1
-    guard correctionStart >= 0 else { return .cancelled(.selectionUnavailable) }
+    let replacedLength = proposal.original.utf16.count + boundaryText.utf16.count
+    let supportsDeletionTracking = expectedCaret.selection.location >= replacedLength
+    let correctionStart =
+      supportsDeletionTracking
+      ? expectedCaret.selection.location - replacedLength
+      : 0
 
-    guard currentSequence() == expectedEventSequence else {
-      return .cancelled(.eventSequenceChanged)
-    }
     guard !isSecureInputEnabled() else { return .cancelled(.secureInput) }
 
     let context = currentContext()
@@ -210,6 +231,7 @@ public final class TerminalCorrectionCoordinator {
       rewriter.rewrite(
         originalCharacterCount: proposal.original.count,
         replacement: proposal.replacement,
+        boundaryText: boundaryText,
         processID: expectedFocus.processID
       )
     else {
@@ -217,18 +239,43 @@ public final class TerminalCorrectionCoordinator {
     }
 
     await delay()
-    let correctedCaretLocation = correctionStart + (proposal.replacement + " ").utf16.count
-    guard
-      let correctedCaret = currentCaret(),
-      correctedCaret.identity == expectedFocus,
-      correctedCaret.selection == TextUTF16Range(location: correctedCaretLocation, length: 0)
-    else {
+    guard !isSecureInputEnabled() else { return .cancelled(.secureInput) }
+    let correctedContext = currentContext()
+    guard correctedContext.identity == expectedFocus else {
+      return .cancelled(.focusChanged)
+    }
+    guard correctedContext.state == .editable, correctedContext.surface == .terminal else {
+      return .cancelled(.surfaceChanged)
+    }
+    guard !isApplicationExcluded(correctedContext.bundleIdentifier) else {
+      return .cancelled(.applicationExcluded)
+    }
+    guard inputSources.currentSource() == sourceBefore else {
+      return .cancelled(.sourceChanged)
+    }
+    guard let correctedCaret = currentCaret(), correctedCaret.identity == expectedFocus else {
       return .cancelled(.rewriteUnverified)
+    }
+    let correctedCaretLocation: Int
+    if supportsDeletionTracking {
+      correctedCaretLocation =
+        correctionStart + (proposal.replacement + boundaryText).utf16.count
+      guard
+        correctedCaret.selection == TextUTF16Range(location: correctedCaretLocation, length: 0)
+      else {
+        return .cancelled(.rewriteUnverified)
+      }
+    } else {
+      correctedCaretLocation = 0
+      guard correctedCaret.selection == expectedCaret.selection else {
+        return .cancelled(.rewriteUnverified)
+      }
     }
     let record = TerminalCorrectionRecord(
       focusIdentity: expectedFocus,
       correctionStart: correctionStart,
-      correctedCaretLocation: correctedCaretLocation
+      correctedCaretLocation: correctedCaretLocation,
+      supportsDeletionTracking: supportsDeletionTracking
     )
     guard inputSources.select(language: proposal.targetLanguage) != nil else {
       return .cancelled(.sourceSwitchFailed(record))
@@ -287,14 +334,15 @@ public final class CGTerminalEventRewriter: TerminalEventRewriting {
   public func rewrite(
     originalCharacterCount: Int,
     replacement: String,
+    boundaryText: String,
     processID: Int32
   ) -> Bool {
-    guard originalCharacterCount > 0, processID > 0,
+    guard originalCharacterCount > 0, !boundaryText.isEmpty, processID > 0,
       let source = CGEventSource(stateID: .combinedSessionState)
     else { return false }
 
     var events: [(CGEvent, CGEvent)] = []
-    for _ in 0..<(originalCharacterCount + 1) {
+    for _ in 0..<(originalCharacterCount + boundaryText.count) {
       guard
         let down = CGEvent(
           keyboardEventSource: source,
@@ -310,7 +358,7 @@ public final class CGTerminalEventRewriter: TerminalEventRewriting {
       events.append((down, up))
     }
 
-    for segment in UnicodeEventText.segments(replacement + " ") {
+    for segment in UnicodeEventText.segments(replacement + boundaryText) {
       guard
         let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
         let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)

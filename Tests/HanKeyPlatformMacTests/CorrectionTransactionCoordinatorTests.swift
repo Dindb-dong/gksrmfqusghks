@@ -125,19 +125,49 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(rewriter.document, "한글로,")
   }
 
-  func testQuestionMarkFailsClosedEvenWhenFollowedBySpace() async {
-    let rewriter = FakeTextRewriter(document: "gksrmffh? ", caret: 10, identity: identity)
-    let sources = FakeInputSources(currentLanguage: .english)
+  func testNaturalQuestionMarkIsPreservedDuringCorrection() async {
+    let rewriter = FakeTextRewriter(document: "좀ㅅ?", caret: 3, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .korean)
     let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
 
     let result = await coordinator.perform(
-      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
-      boundary: .punctuation,
+      proposal: proposal(original: "좀ㅅ", replacement: "what", target: .english),
+      boundary: .questionMark,
       expectedFocus: identity
     )
 
-    XCTAssertEqual(result, .cancelled(.unsafeBoundary))
-    XCTAssertEqual(rewriter.document, "gksrmffh? ")
+    guard case .corrected = result else {
+      return XCTFail("Expected a natural question to correct, got \(result)")
+    }
+    XCTAssertEqual(rewriter.document, "what?")
+    XCTAssertEqual(sources.selectedLanguages, [.english])
+  }
+
+  func testQuestionMarkWaitsForRapidQueryContinuationAndFailsClosed() async {
+    let rewriter = FakeTextRewriter(document: "좀ㅅ?", caret: 3, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .korean)
+    var delayCount = 0
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter,
+      inputSources: sources,
+      verificationAttempts: 4,
+      delay: {
+        delayCount += 1
+        if delayCount == 2 {
+          rewriter.document += "a"
+          rewriter.selection = TextUTF16Range(location: 4, length: 0)
+        }
+      }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "좀ㅅ", replacement: "what", target: .english),
+      boundary: .questionMark,
+      expectedFocus: identity
+    )
+
+    XCTAssertEqual(result, .cancelled(.textMismatch))
+    XCTAssertEqual(rewriter.document, "좀ㅅ?a")
     XCTAssertEqual(rewriter.replaceCount, 0)
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }

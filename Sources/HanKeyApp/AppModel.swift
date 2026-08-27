@@ -725,24 +725,20 @@ final class AppModel {
       guard let self else { return }
       switch result {
       case .corrected(let record):
-        beginDeletionTracking(
+        beginTerminalDeletionTrackingIfSupported(
+          record: record,
           word: word,
-          focusIdentity: focusIdentity,
-          surface: .terminal,
-          correctionStart: record.correctionStart,
-          correctedCaretLocation: record.correctedCaretLocation
+          focusIdentity: focusIdentity
         )
         lastCorrectionRecord = nil
         pendingNeverRecord = nil
         correctionActivity = .corrected
         deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
-        beginDeletionTracking(
+        beginTerminalDeletionTrackingIfSupported(
+          record: record,
           word: word,
-          focusIdentity: focusIdentity,
-          surface: .terminal,
-          correctionStart: record.correctionStart,
-          correctedCaretLocation: record.correctedCaretLocation
+          focusIdentity: focusIdentity
         )
         lastCorrectionRecord = nil
         pendingNeverRecord = nil
@@ -752,6 +748,24 @@ final class AppModel {
       }
       activeTransaction = nil
     }
+  }
+
+  private func beginTerminalDeletionTrackingIfSupported(
+    record: TerminalCorrectionRecord,
+    word: BufferedWord,
+    focusIdentity: FocusedElementIdentity
+  ) {
+    guard record.supportsDeletionTracking else {
+      clearDeletionTracking()
+      return
+    }
+    beginDeletionTracking(
+      word: word,
+      focusIdentity: focusIdentity,
+      surface: .terminal,
+      correctionStart: record.correctionStart,
+      correctedCaretLocation: record.correctedCaretLocation
+    )
   }
 
   private func beginDeletionTracking(

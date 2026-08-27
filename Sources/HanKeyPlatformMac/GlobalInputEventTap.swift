@@ -196,6 +196,10 @@ enum KeyEventInterpreter {
       }
     }
 
+    if Int(keyCode) == kVK_ANSI_Slash, flags.contains(.maskShift) {
+      return .boundary(.questionMark)
+    }
+
     switch Int(keyCode) {
     case kVK_CapsLock, kVK_JIS_Eisu, kVK_JIS_Kana:
       return .invalidate(.inputSourceChanged)
