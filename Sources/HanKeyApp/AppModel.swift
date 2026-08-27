@@ -59,6 +59,7 @@ enum CorrectionActivity: Equatable {
   case sourceSwitchFailed
   case manuallyCorrected
   case undone
+  case repeatedInputPreserved
   case actionUnavailable
 
   var title: String {
@@ -69,6 +70,7 @@ enum CorrectionActivity: Equatable {
     case .sourceSwitchFailed: "입력 소스 전환 실패"
     case .manuallyCorrected: "수동 변환 완료"
     case .undone: "마지막 교정 되돌림"
+    case .repeatedInputPreserved: "반복 입력 유지"
     case .actionUnavailable: "현재 위치에서는 실행할 수 없음"
     }
   }
@@ -108,6 +110,7 @@ final class AppModel {
   @ObservationIgnored private var automaticCorrectionPreference: AutomaticCorrectionPreference?
   @ObservationIgnored private var launchAtLoginController: LaunchAtLoginController?
   @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
+  @ObservationIgnored private var repeatedInputGuard = RepeatedInputGuard()
 
   init() {
     let automaticCorrectionPreference = AutomaticCorrectionPreference()
@@ -509,8 +512,14 @@ final class AppModel {
     boundary: WordBoundary,
     focusIdentity: FocusedElementIdentity
   ) {
+    guard activeTransaction == nil else {
+      return
+    }
+    if repeatedInputGuard.shouldSuppressCorrection(for: word) {
+      correctionActivity = .repeatedInputPreserved
+      return
+    }
     guard
-      activeTransaction == nil,
       let activeLanguage = inputSourceController?.currentSource()?.language,
       let transactionCoordinator
     else {
@@ -556,11 +565,13 @@ final class AppModel {
       }
       switch result {
       case .corrected(let record):
+        repeatedInputGuard.recordCorrection(for: word)
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .corrected
         deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
+        repeatedInputGuard.recordCorrection(for: word)
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed
