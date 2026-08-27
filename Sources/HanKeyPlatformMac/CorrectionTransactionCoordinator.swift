@@ -53,10 +53,11 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.sourceChanged)
     }
 
-    var committedText: (
-      snapshot: FocusedTextSnapshot,
-      located: (range: TextUTF16Range, text: String, boundary: String)
-    )?
+    var committedText:
+      (
+        snapshot: FocusedTextSnapshot,
+        located: (range: TextUTF16Range, text: String, boundary: String)
+      )?
     var observedSnapshot = false
     for _ in 0..<verificationAttempts {
       await delay()
