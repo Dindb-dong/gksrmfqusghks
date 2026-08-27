@@ -201,7 +201,11 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     guard case .corrected = result else {
       return XCTFail("Expected the stable first post-Space snapshot to correct, got \(result)")
     }
-    XCTAssertEqual(delayCount, 2, "Only the pre-rewrite settle and post-rewrite verification may wait")
+    XCTAssertEqual(
+      delayCount,
+      2,
+      "Only the pre-rewrite settle and post-rewrite verification may wait"
+    )
     XCTAssertEqual(writer.rewrites.count, 1)
   }
 
