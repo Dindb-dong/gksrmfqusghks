@@ -53,31 +53,49 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.sourceChanged)
     }
 
-    await delay()
-    guard !Task.isCancelled else {
-      return .cancelled(.cancelled)
+    var committedText:
+      (
+        snapshot: FocusedTextSnapshot,
+        located: (range: TextUTF16Range, text: String, boundary: String)
+      )?
+    var observedSnapshot = false
+    for _ in 0..<verificationAttempts {
+      await delay()
+      guard !Task.isCancelled else {
+        return .cancelled(.cancelled)
+      }
+      guard let snapshot = rewriter.currentSnapshot() else {
+        continue
+      }
+      observedSnapshot = true
+      guard !isApplicationExcluded(snapshot.bundleIdentifier) else {
+        return .cancelled(.applicationExcluded)
+      }
+      guard snapshot.identity == expectedFocus else {
+        return .cancelled(.focusChanged)
+      }
+      guard snapshot.selection.length == 0 else {
+        return .cancelled(.selectionChanged)
+      }
+      guard
+        let locatedText = locateText(
+          original: proposal.original,
+          boundary: boundary,
+          snapshot: snapshot
+        )
+      else {
+        continue
+      }
+      committedText = (snapshot, locatedText)
+      break
     }
-    guard let snapshot = rewriter.currentSnapshot() else {
-      return .cancelled(.selectionUnavailable)
+    guard let committedText else {
+      return .cancelled(observedSnapshot ? .textMismatch : .selectionUnavailable)
     }
-    guard !isApplicationExcluded(snapshot.bundleIdentifier) else {
-      return .cancelled(.applicationExcluded)
-    }
-    guard snapshot.identity == expectedFocus else {
-      return .cancelled(.focusChanged)
-    }
-    guard snapshot.selection.length == 0 else {
-      return .cancelled(.selectionChanged)
-    }
-
-    guard
-      let locatedText = locateText(
-        original: proposal.original,
-        boundary: boundary,
-        snapshot: snapshot
-      )
-    else {
-      return .cancelled(.textMismatch)
+    let snapshot = committedText.snapshot
+    let locatedText = committedText.located
+    guard inputSources.currentSource() == sourceBefore else {
+      return .cancelled(.sourceChanged)
     }
 
     let replacedRange = locatedText.range

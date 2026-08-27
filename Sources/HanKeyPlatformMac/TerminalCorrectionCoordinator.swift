@@ -67,6 +67,7 @@ public final class TerminalCorrectionCoordinator {
   private let isApplicationExcluded: ExclusionProvider
   private let isSecureInputEnabled: SecureInputProvider
   private let delay: Delay
+  private let settlingAttempts: Int
   private var isBusy = false
 
   public init(
@@ -81,6 +82,7 @@ public final class TerminalCorrectionCoordinator {
     isSecureInputEnabled: @escaping SecureInputProvider = {
       PlatformCapabilities.currentPermissionSnapshot().isSecureInputEnabled
     },
+    settlingAttempts: Int = 4,
     delay: @escaping Delay = {
       await withCheckedContinuation { continuation in
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(8)) {
@@ -89,6 +91,7 @@ public final class TerminalCorrectionCoordinator {
       }
     }
   ) {
+    precondition(settlingAttempts > 0)
     self.rewriter = rewriter
     self.inputSources = inputSources
     self.currentContext = currentContext
@@ -96,6 +99,7 @@ public final class TerminalCorrectionCoordinator {
     self.currentCaret = currentCaret
     self.isApplicationExcluded = isApplicationExcluded
     self.isSecureInputEnabled = isSecureInputEnabled
+    self.settlingAttempts = settlingAttempts
     self.delay = delay
   }
 
@@ -116,17 +120,49 @@ public final class TerminalCorrectionCoordinator {
     guard sourceBefore.language == proposal.targetLanguage.opposite else {
       return .cancelled(.sourceChanged)
     }
-    guard let expectedCaret = currentCaret() else {
-      return .cancelled(.selectionUnavailable)
+    var expectedCaret: FocusedTextSnapshot?
+    var observedBoundaryAdvance = false
+    for _ in 0..<settlingAttempts {
+      await delay()
+      guard currentSequence() == expectedEventSequence else {
+        return .cancelled(.eventSequenceChanged)
+      }
+      guard !isSecureInputEnabled() else { return .cancelled(.secureInput) }
+      let settlingContext = currentContext()
+      guard settlingContext.identity == expectedFocus else {
+        return .cancelled(.focusChanged)
+      }
+      guard settlingContext.state == .editable, settlingContext.surface == .terminal else {
+        return .cancelled(.surfaceChanged)
+      }
+      guard !isApplicationExcluded(settlingContext.bundleIdentifier) else {
+        return .cancelled(.applicationExcluded)
+      }
+      guard let candidateCaret = currentCaret() else {
+        continue
+      }
+      guard candidateCaret.identity == expectedFocus else {
+        return .cancelled(.focusChanged)
+      }
+      guard candidateCaret.selection.length == 0 else {
+        return .cancelled(.selectionChanged)
+      }
+      if let previousCaret = expectedCaret, candidateCaret != previousCaret {
+        let isSingleSpaceAdvance =
+          !observedBoundaryAdvance
+          && candidateCaret.identity == previousCaret.identity
+          && candidateCaret.selection.location == previousCaret.selection.location + 1
+        guard isSingleSpaceAdvance else {
+          return .cancelled(.selectionChanged)
+        }
+        observedBoundaryAdvance = true
+      }
+      expectedCaret = candidateCaret
     }
-    guard expectedCaret.identity == expectedFocus else { return .cancelled(.focusChanged) }
-    guard expectedCaret.selection.length == 0 else {
-      return .cancelled(.selectionChanged)
-    }
+    guard let expectedCaret else { return .cancelled(.selectionUnavailable) }
     let correctionStart = expectedCaret.selection.location - proposal.original.utf16.count - 1
     guard correctionStart >= 0 else { return .cancelled(.selectionUnavailable) }
 
-    await delay()
     guard currentSequence() == expectedEventSequence else {
       return .cancelled(.eventSequenceChanged)
     }
@@ -139,6 +175,9 @@ public final class TerminalCorrectionCoordinator {
     }
     guard !isApplicationExcluded(context.bundleIdentifier) else {
       return .cancelled(.applicationExcluded)
+    }
+    guard inputSources.currentSource() == sourceBefore else {
+      return .cancelled(.sourceChanged)
     }
     guard let verifiedCaret = currentCaret() else {
       return .cancelled(.selectionUnavailable)

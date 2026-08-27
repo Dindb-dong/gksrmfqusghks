@@ -118,6 +118,8 @@ score(text) = dictionary
 
 한글 IME는 단어 경계 전까지 marked text를 유지할 수 있으므로 자동 교정은 기본적으로 경계 이벤트 후 다음 run-loop에서 실행합니다.
 
+Space 키 이벤트보다 편집기·터미널의 AX text/caret 반영이 늦을 수 있으므로, 교정 트랜잭션은 최대 4회의 짧고 제한된 재시도 동안 실제 Space 경계와 caret을 기다립니다. 각 시도에서 PID·포커스·selection·입력 소스·Secure Input·이벤트 세대를 다시 확인하며, 터미널에서는 Space 커밋으로 설명 가능한 단 한 번의 `+1` caret 이동 외의 변화가 있으면 즉시 취소합니다.
+
 1. 이벤트 시점의 앱 PID, 포커스 element, selection range를 기록합니다.
 2. 실행 직전에 동일 포커스와 예상 caret인지 재확인합니다.
 3. `AXSelectedTextRange`로 대상 범위를 지정합니다.

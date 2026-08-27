@@ -71,6 +71,92 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertEqual(sources.selectedLanguages, [.english])
   }
 
+  func testRetriesUntilCmuxPublishesCaretAfterSpaceCommit() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    var preRewriteReads = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        if writer.rewrites.isEmpty {
+          preRewriteReads += 1
+          return FocusedTextSnapshot(
+            identity: self.identity,
+            selection: TextUTF16Range(location: preRewriteReads == 1 ? 7 : 8, length: 0),
+            bundleIdentifier: "com.cmuxterm.app"
+          )
+        }
+        return FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 9, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: {}
+    )
+    let original = "채ㅡㅔㅁㅊㅅ"
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: original,
+        replacement: "compact",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    guard case .corrected(let record) = result else {
+      return XCTFail("Expected delayed cmux caret to be retried, got \(result)")
+    }
+    XCTAssertEqual(record.correctionStart, 1)
+    XCTAssertEqual(writer.rewrites, [.init(count: 6, replacement: "compact", processID: 42)])
+  }
+
+  func testInputSourceChangeDuringCmuxSettlingCancelsBeforeMutation() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .english)
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: 9, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: {
+        delayCount += 1
+        if delayCount == 2 {
+          sources.changeLanguage(to: .korean)
+        }
+      }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal,
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(result, .cancelled(.sourceChanged))
+    XCTAssertTrue(writer.rewrites.isEmpty)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   func testEveryNonSpaceBoundaryFailsClosedBeforeMutation() async {
     for boundary in [WordBoundary.returnKey, .tab, .punctuation] {
       let writer = FakeTerminalWriter()
@@ -119,7 +205,7 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
         defer { readCount += 1 }
         return FocusedTextSnapshot(
           identity: self.identity,
-          selection: TextUTF16Range(location: readCount == 0 ? 9 : 10, length: 0),
+          selection: TextUTF16Range(location: readCount == 0 ? 9 : 11, length: 0),
           bundleIdentifier: "com.cmuxterm.app"
         )
       },
@@ -204,19 +290,17 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     correctedCaret: Int = 4
   ) -> TerminalCorrectionCoordinator {
     let currentContext = context ?? self.context()
-    var caretReadCount = 0
     return TerminalCorrectionCoordinator(
       rewriter: writer,
       inputSources: sources,
       currentContext: { currentContext },
       currentSequence: { sequence },
       currentCaret: {
-        defer { caretReadCount += 1 }
-        let locations = [initialCaret, initialCaret, correctedCaret]
+        let location = writer.rewrites.isEmpty ? initialCaret : correctedCaret
         return FocusedTextSnapshot(
           identity: currentContext.identity ?? self.identity,
           selection: TextUTF16Range(
-            location: locations[min(caretReadCount, locations.count - 1)],
+            location: location,
             length: 0
           ),
           bundleIdentifier: currentContext.bundleIdentifier
@@ -256,6 +340,10 @@ private final class FakeTerminalInputSources: InputSourceControlling {
   private(set) var selectedLanguages: [TokenLanguage] = []
 
   init(language: TokenLanguage) {
+    self.language = language
+  }
+
+  func changeLanguage(to language: TokenLanguage) {
     self.language = language
   }
 

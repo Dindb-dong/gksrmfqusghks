@@ -50,6 +50,64 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(sources.selectedLanguages, [.english])
   }
 
+  func testRetriesUntilSpaceCommitBecomesVisibleThroughAccessibility() async {
+    let original = "채ㅡㅔㅁㅊㅅ"
+    let rewriter = FakeTextRewriter(document: "/\(original)", caret: 7, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .korean)
+    var delayCount = 0
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter,
+      inputSources: sources,
+      verificationAttempts: 4,
+      delay: {
+        delayCount += 1
+        if delayCount == 2 {
+          rewriter.document.append(" ")
+          rewriter.selection = TextUTF16Range(location: 8, length: 0)
+        }
+      }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: original, replacement: "compact", target: .english),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    guard case .corrected = result else {
+      return XCTFail("Expected delayed Space commit to be retried, got \(result)")
+    }
+    XCTAssertGreaterThanOrEqual(delayCount, 2)
+    XCTAssertEqual(rewriter.document, "/compact ")
+    XCTAssertEqual(sources.selectedLanguages, [.english])
+  }
+
+  func testInputSourceChangeDuringSpaceSettlingCancelsBeforeMutation() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter,
+      inputSources: sources,
+      verificationAttempts: 4,
+      delay: {
+        sources.current = InputSourceSnapshot(
+          identifier: InputSourceController.korean2SetIdentifier,
+          language: .korean
+        )
+      }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    XCTAssertEqual(result, .cancelled(.sourceChanged))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   func testPreservesObservedPunctuationInsteadOfSynthesizingIt() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh,", caret: 9, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)
