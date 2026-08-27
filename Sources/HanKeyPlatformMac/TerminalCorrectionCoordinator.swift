@@ -10,6 +10,8 @@ public enum TerminalCorrectionFailure: Equatable, Sendable {
   case sourceChanged
   case eventSequenceChanged
   case focusChanged
+  case selectionUnavailable
+  case selectionChanged
   case surfaceChanged
   case secureInput
   case applicationExcluded
@@ -36,6 +38,7 @@ public final class TerminalCorrectionCoordinator {
   public typealias Delay = @MainActor @Sendable () async -> Void
   public typealias ContextProvider = @MainActor () -> FocusedElementContext
   public typealias SequenceProvider = @MainActor () -> UInt64
+  public typealias CaretProvider = @MainActor () -> FocusedTextSnapshot?
   public typealias ExclusionProvider = @MainActor (String?) -> Bool
   public typealias SecureInputProvider = @MainActor () -> Bool
 
@@ -43,6 +46,7 @@ public final class TerminalCorrectionCoordinator {
   private let inputSources: any InputSourceControlling
   private let currentContext: ContextProvider
   private let currentSequence: SequenceProvider
+  private let currentCaret: CaretProvider
   private let isApplicationExcluded: ExclusionProvider
   private let isSecureInputEnabled: SecureInputProvider
   private let delay: Delay
@@ -55,6 +59,7 @@ public final class TerminalCorrectionCoordinator {
       FocusedElementSecurityInspector.currentContext()
     },
     currentSequence: @escaping SequenceProvider,
+    currentCaret: @escaping CaretProvider = { TerminalCaretInspector.currentSnapshot() },
     isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
     isSecureInputEnabled: @escaping SecureInputProvider = {
       PlatformCapabilities.currentPermissionSnapshot().isSecureInputEnabled
@@ -71,6 +76,7 @@ public final class TerminalCorrectionCoordinator {
     self.inputSources = inputSources
     self.currentContext = currentContext
     self.currentSequence = currentSequence
+    self.currentCaret = currentCaret
     self.isApplicationExcluded = isApplicationExcluded
     self.isSecureInputEnabled = isSecureInputEnabled
     self.delay = delay
@@ -93,6 +99,13 @@ public final class TerminalCorrectionCoordinator {
     guard sourceBefore.language == proposal.targetLanguage.opposite else {
       return .cancelled(.sourceChanged)
     }
+    guard let expectedCaret = currentCaret() else {
+      return .cancelled(.selectionUnavailable)
+    }
+    guard expectedCaret.identity == expectedFocus else { return .cancelled(.focusChanged) }
+    guard expectedCaret.selection.length == 0 else {
+      return .cancelled(.selectionChanged)
+    }
 
     await delay()
     guard currentSequence() == expectedEventSequence else {
@@ -107,6 +120,12 @@ public final class TerminalCorrectionCoordinator {
     }
     guard !isApplicationExcluded(context.bundleIdentifier) else {
       return .cancelled(.applicationExcluded)
+    }
+    guard let verifiedCaret = currentCaret() else {
+      return .cancelled(.selectionUnavailable)
+    }
+    guard verifiedCaret == expectedCaret else {
+      return .cancelled(.selectionChanged)
     }
     guard currentSequence() == expectedEventSequence else {
       return .cancelled(.eventSequenceChanged)
@@ -126,6 +145,49 @@ public final class TerminalCorrectionCoordinator {
       return .cancelled(.sourceSwitchFailed)
     }
     return .corrected
+  }
+}
+
+public enum TerminalCaretInspector {
+  @MainActor
+  public static func currentSnapshot() -> FocusedTextSnapshot? {
+    let systemWide = AXUIElementCreateSystemWide()
+    var focusedValue: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        systemWide,
+        kAXFocusedUIElementAttribute as CFString,
+        &focusedValue
+      ) == .success,
+      let focusedValue
+    else { return nil }
+
+    let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
+    let context = FocusedElementSecurityInspector.context(for: element)
+    guard context.state == .editable, context.surface == .terminal, let identity = context.identity
+    else { return nil }
+
+    var selectionValue: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        element,
+        kAXSelectedTextRangeAttribute as CFString,
+        &selectionValue
+      ) == .success,
+      let selectionValue,
+      CFGetTypeID(selectionValue) == AXValueGetTypeID()
+    else { return nil }
+
+    let axValue = unsafeDowncast(selectionValue, to: AXValue.self)
+    var range = CFRange()
+    guard AXValueGetValue(axValue, .cfRange, &range), range.location >= 0, range.length >= 0
+    else { return nil }
+
+    return FocusedTextSnapshot(
+      identity: identity,
+      selection: TextUTF16Range(location: range.location, length: range.length),
+      bundleIdentifier: context.bundleIdentifier
+    )
   }
 }
 

@@ -50,7 +50,7 @@ HanKeyApp
 
 1. 터미널 모드가 켜져 있고 포커스 surface가 `.terminal`일 때만 단어 버퍼를 허용합니다.
 2. 결정 엔진과 강제 안전 필터는 일반 편집기와 동일하게 적용하고 Space 경계만 허용합니다.
-3. 교정 직전에 Secure Input, PID, 포커스 identity, 번들 제외, 입력 소스와 마지막 물리 이벤트 세대를 다시 검증합니다.
+3. 교정 직전에 Secure Input, PID, 포커스 identity, caret selection, 번들 제외, 입력 소스와 마지막 물리 이벤트 세대를 다시 검증합니다.
 4. 원문과 Space를 합성 Backspace로 제거하고 후보와 Space를 PID 대상으로 삽입합니다. 모든 합성 이벤트는 sentinel로 재관찰을 막습니다.
 5. 터미널은 선택 문자열 검증과 정확한 Undo를 보장할 수 없으므로 Enter·Tab·문장부호에서는 절대 실행하지 않고 일반 교정 기록에도 넣지 않습니다.
 

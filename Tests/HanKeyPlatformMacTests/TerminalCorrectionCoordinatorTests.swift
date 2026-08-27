@@ -59,6 +59,37 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertTrue(writer.rewrites.isEmpty)
   }
 
+  func testCaretMovementWithoutAKeyEventCancelsBeforeMutation() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .english)
+    var readCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        defer { readCount += 1 }
+        return FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(location: readCount == 0 ? 8 : 9, length: 0),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      delay: {}
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal,
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(result, .cancelled(.selectionChanged))
+    XCTAssertTrue(writer.rewrites.isEmpty)
+  }
+
   func testSecureInputFocusChangeSurfaceChangeAndExclusionFailClosed() async {
     let cases: [(FocusedElementContext, Bool, Bool, TerminalCorrectionFailure)] = [
       (context(), true, false, .secureInput),
@@ -129,6 +160,13 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
       inputSources: sources,
       currentContext: { currentContext },
       currentSequence: { sequence },
+      currentCaret: {
+        FocusedTextSnapshot(
+          identity: currentContext.identity ?? self.identity,
+          selection: TextUTF16Range(location: 8, length: 0),
+          bundleIdentifier: currentContext.bundleIdentifier
+        )
+      },
       isApplicationExcluded: { _ in excluded },
       isSecureInputEnabled: { secureInput },
       delay: {}
