@@ -29,6 +29,7 @@ final class InputSurfaceInspectorTests: XCTestCase {
     let field = AccessibilityElementDescriptor(role: kAXTextAreaRole as String, subrole: nil)
     let fixtures: [(String, InputSurface)] = [
       ("com.apple.Terminal", .terminal),
+      ("com.cmuxterm.app", .terminal),
       ("com.microsoft.VSCode", .ide),
       ("com.jetbrains.intellij.ce", .ide),
       ("com.1password.1password", .passwordManager),
