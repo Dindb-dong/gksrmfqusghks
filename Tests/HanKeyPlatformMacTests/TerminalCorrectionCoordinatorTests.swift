@@ -120,6 +120,48 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertEqual(writer.rewrites, [.init(count: 6, replacement: "compact", processID: 42)])
   }
 
+  func testRetriesOnlyWhileTerminalCaretIsUnavailable() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .english)
+    var unavailableReads = 2
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { 9 },
+      currentCaret: {
+        if unavailableReads > 0 {
+          unavailableReads -= 1
+          return nil
+        }
+        return FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(
+            location: writer.rewrites.isEmpty ? 9 : 4,
+            length: 0
+          ),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: { delayCount += 1 }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal,
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    guard case .corrected = result else {
+      return XCTFail("Expected a temporarily unavailable caret to recover, got \(result)")
+    }
+    XCTAssertEqual(delayCount, 4)
+    XCTAssertEqual(writer.rewrites.count, 1)
+  }
+
   func testStableTerminalCorrectsWithoutWaitingThroughEveryRetryWindow() async {
     let writer = FakeTerminalWriter()
     let sources = FakeTerminalInputSources(language: .english)
