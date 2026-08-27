@@ -21,14 +21,21 @@ final class NeverRuleReviewNotifierTests: XCTestCase {
       NeverRuleReviewNotifier.decision(
         for: NeverRuleReviewNotifier.acceptActionIdentifier
       ),
-      .accept
+      .keepExcluded
     )
     XCTAssertEqual(
       NeverRuleReviewNotifier.decision(
         for: NeverRuleReviewNotifier.rejectActionIdentifier
       ),
-      .rejectAndAlwaysConvert
+      .alwaysConvert
     )
     XCTAssertNil(NeverRuleReviewNotifier.decision(for: "unknown"))
+  }
+
+  func testActionTitlesDescribeTheirResultWithoutAcceptRejectAmbiguity() {
+    let actions = NeverRuleReviewNotifier.makeCategory().actions
+
+    XCTAssertEqual(actions.map(\.title), ["변환하지 않기", "계속 자동 변환"])
+    XCTAssertFalse(actions.contains { $0.title == "수락" || $0.title == "거부" })
   }
 }

@@ -151,7 +151,7 @@ struct SettingsView: View {
         ContentUnavailableView(
           "항상 변환 없음",
           systemImage: "arrow.left.arrow.right.circle",
-          description: Text("직접 추가하거나 변환 제외 알림에서 거부한 규칙이 여기에 표시됩니다.")
+          description: Text("직접 추가하거나 알림에서 ‘계속 자동 변환’을 선택한 규칙이 여기에 표시됩니다.")
         )
       } else {
         ForEach(model.alwaysConvertRules) { rule in

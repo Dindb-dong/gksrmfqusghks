@@ -2,8 +2,8 @@ import Foundation
 @preconcurrency import UserNotifications
 
 public enum NeverRuleReviewDecision: Equatable, Sendable {
-  case accept
-  case rejectAndAlwaysConvert
+  case keepExcluded
+  case alwaysConvert
 }
 
 public final class NeverRuleReviewNotifier: NSObject, UNUserNotificationCenterDelegate,
@@ -30,24 +30,7 @@ public final class NeverRuleReviewNotifier: NSObject, UNUserNotificationCenterDe
 
   public func start() {
     center.delegate = self
-    let accept = UNNotificationAction(
-      identifier: Self.acceptActionIdentifier,
-      title: "수락",
-      options: []
-    )
-    let reject = UNNotificationAction(
-      identifier: Self.rejectActionIdentifier,
-      title: "거부하고 항상 변환",
-      options: []
-    )
-    center.setNotificationCategories([
-      UNNotificationCategory(
-        identifier: Self.categoryIdentifier,
-        actions: [accept, reject],
-        intentIdentifiers: [],
-        options: []
-      )
-    ])
+    center.setNotificationCategories([Self.makeCategory()])
   }
 
   public func notify(ruleID: UUID) {
@@ -64,18 +47,37 @@ public final class NeverRuleReviewNotifier: NSObject, UNUserNotificationCenterDe
 
   public static func makeContent(ruleID: UUID) -> UNMutableNotificationContent {
     let content = UNMutableNotificationContent()
-    content.title = "변환 제외를 유지할까요?"
-    content.body = "방금 추가된 로컬 규칙을 검토하세요. 실제 입력 내용은 알림에 포함하지 않았습니다."
+    content.title = "이 입력을 앞으로 어떻게 처리할까요?"
+    content.body = "교정 결과를 지운 뒤 같은 입력을 다시 쳤습니다. 원하는 동작을 선택하세요. 입력 내용은 표시하지 않습니다."
     content.sound = .default
     content.categoryIdentifier = categoryIdentifier
     content.userInfo = [ruleIDKey: ruleID.uuidString]
     return content
   }
 
+  public static func makeCategory() -> UNNotificationCategory {
+    let keepExcluded = UNNotificationAction(
+      identifier: acceptActionIdentifier,
+      title: "변환하지 않기",
+      options: []
+    )
+    let alwaysConvert = UNNotificationAction(
+      identifier: rejectActionIdentifier,
+      title: "계속 자동 변환",
+      options: []
+    )
+    return UNNotificationCategory(
+      identifier: categoryIdentifier,
+      actions: [keepExcluded, alwaysConvert],
+      intentIdentifiers: [],
+      options: []
+    )
+  }
+
   public static func decision(for actionIdentifier: String) -> NeverRuleReviewDecision? {
     switch actionIdentifier {
-    case acceptActionIdentifier: .accept
-    case rejectActionIdentifier: .rejectAndAlwaysConvert
+    case acceptActionIdentifier: .keepExcluded
+    case rejectActionIdentifier: .alwaysConvert
     default: nil
     }
   }
