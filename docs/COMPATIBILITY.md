@@ -14,7 +14,8 @@
 | Native AppKit/SwiftUI text fields | Supported | primary acceptance surface |
 | Safari/Chrome normal page fields | Supported/Best effort | address bar is Protected |
 | Electron chat/editor fields | Best effort | app-specific AX behavior verified per release |
-| Terminal and shells | Protected | manual mode opt-in only after explicit warning |
+| Terminal and shells | Protected | exact range revalidation is required; custom IME is the safe future path |
+| cmux terminal content area | Protected | AX range text/mutation unavailable; automatic backspace rewrite prohibited |
 | IDE code editors | Protected | comments/strings cannot be safely inferred globally |
 | Password managers | Protected, immutable | no auto-correction or learning |
 | Secure text fields | Protected, immutable | buffer purge and no processing |

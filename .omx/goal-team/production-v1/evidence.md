@@ -19,7 +19,8 @@
 | F05 Text rewrite | `feature/text-rewrite`, PR #5 | `d4c3be7` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F06 Production UX | `feature/production-ux`, PR #6 | `43053fb` | local, visual QA, and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
 | F07 Manual, Undo, learning | `feature/manual-undo-learning`, PR #7 | `9a163bd` | local and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
-| F08 Compatibility UltraQA | `feature/compatibility-qa` | `baa567f`, `3c15edb`, `b06f3c3`, `b358d9b` | 60 local tests, adversarial cycle, Release build passed | pending | pending |
+| F08 Compatibility UltraQA | `feature/compatibility-qa`, PR #8 | `d42318b` | local UltraQA and arm64/Intel CI passed | squash merged | worktree and local/remote branch removed |
+| F09 Release engineering | `feature/release-engineering`, PR #9 | `fcee2ae`, `a72c5f0`, `4dd0388`, `1b11de2`, `2fbe933`, `fb3f222` | 68 tests; reviewed universal signed/notarized app and DMG installed and verified | pending | pending |
 
 ## F01 verification
 
@@ -108,6 +109,21 @@
 - Misleading SUCCESS with exit 1 was rejected; a 300-second child was yielded then interrupted with exit 130; stale iteration 99 was rejected; all isolated harnesses/logs were removed.
 - Content-free support export is schema-limited to app/OS/architecture, permission booleans, operational state, and rule count. Typed content, key codes, selection, and app identity are excluded by test.
 - Safety boundary: live TextEdit/browser/Electron/password/Secure Input testing was not run because it requires persistent macOS TCC consent. Automated adapter/surface/focus/transaction tests are the safe substitute; live consent remains a truthful F09 release gate.
+
+## F09 verification
+
+- Version 1.0.0 metadata, a production `한 | A` app icon, compiled asset catalog, privacy policy, support guide, changelog, safe issue templates, install/update/uninstall instructions, release notes, and SPDX SBOM are present.
+- `./scripts/check.sh`: all 68 tests passed with strict format, no-network, clipboard/whole-field-AX/logging gates, and an ad-hoc Hardened Runtime Release app.
+- Universal SwiftPM Release build contains `x86_64 arm64`; app/ZIP/DMG/SBOM/checksum packaging and exact mounted-DMG nested-app verification passed.
+- Developer ID identity Team `7995Q7WAZF` signed the app and DMG with Hardened Runtime and secure timestamp.
+- Apple app submission `c33ea25e-e5ae-4cdb-93b6-16ef14af51db` and DMG submission `2e7c7931-87e0-4bfb-b816-e19116d0d69a` for reviewed commit `fb3f222` were Accepted; app and DMG staple validation passed.
+- Gatekeeper accepted both artifacts with source `Notarized Developer ID`; ZIP/DMG/SBOM SHA-256 values and sizes are recorded in `docs/qa/f09-release.md`.
+- A macOS 26 arm runner universal release-smoke job was added after the arm64/Intel validation matrix.
+- The final PRD gap for user app exclusions was closed: exact bundle IDs persist locally and protect both automatic and manual paths before text buffering; built-in protected categories remain immutable.
+- Review-driven gaps were closed for persisted automatic-correction opt-in, independent login launch/announcement/sound settings, automatic pre-mutation exclusion revalidation, atomic rollback, private 0700/0600 rule storage, and safe handling of permission-hardening failures.
+- The exact reviewed candidate was installed at `/Applications/HanKey.app`; its binary hash matched the release app, Gatekeeper accepted it as `Notarized Developer ID`, and the running process exposed no network sockets.
+- Installed idle performance: 11 one-minute samples over 10 minutes all reported 0.0% CPU and sleeping state; cumulative CPU stayed at 0.25 seconds, memory at 23 MB, and threads showed no growth.
+- Remaining external gate: install the merged-main signed candidate, grant Input Monitoring and Accessibility in macOS System Settings, and execute the live TextEdit/browser/Electron/Secure Input matrix before GitHub Release publication.
 
 ## Structural review
 

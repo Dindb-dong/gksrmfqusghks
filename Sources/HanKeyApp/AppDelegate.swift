@@ -16,9 +16,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     #endif
     guard !UserDefaults.standard.bool(forKey: "onboardingCompleted") else {
+      AppModel.shared.resumeSavedCorrectionIfPossible()
       return
     }
     showInitialOnboarding()
+  }
+
+  func applicationDidBecomeActive(_ notification: Notification) {
+    AppModel.shared.refreshPermissions()
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(500))
+      AppModel.shared.refreshPermissions()
+    }
   }
 
   private func showInitialOnboarding() {

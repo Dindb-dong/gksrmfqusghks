@@ -59,6 +59,7 @@ enum CorrectionActivity: Equatable {
   case sourceSwitchFailed
   case manuallyCorrected
   case undone
+  case repeatedInputPreserved
   case actionUnavailable
 
   var title: String {
@@ -69,6 +70,7 @@ enum CorrectionActivity: Equatable {
     case .sourceSwitchFailed: "입력 소스 전환 실패"
     case .manuallyCorrected: "수동 변환 완료"
     case .undone: "마지막 교정 되돌림"
+    case .repeatedInputPreserved: "반복 입력 유지"
     case .actionUnavailable: "현재 위치에서는 실행할 수 없음"
     }
   }
@@ -80,15 +82,22 @@ final class AppModel {
   static let shared = AppModel()
 
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
-  private(set) var isCorrectionEnabled = false
+  private(set) var isCorrectionEnabled: Bool
   private(set) var observationState: InputObservationState = .stopped
   private(set) var correctionActivity: CorrectionActivity = .idle
   private(set) var learningRules: [LearningRuleEntry] = []
+  private(set) var excludedApplications: [String] = []
   private(set) var learningStoreRecovered = false
+  private(set) var learningStorePermissionWarning = false
   private(set) var learningMessage = ""
   private(set) var manualShortcut: ShortcutPreset = .none
   private(set) var undoShortcut: ShortcutPreset = .none
   private(set) var shortcutMessage = "기본 전역 단축키는 등록하지 않습니다."
+  private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .notRegistered
+  private(set) var launchAtLoginMessage = ""
+  private(set) var isUpdatingLaunchAtLogin = false
+  private(set) var inputMonitoringGuidance = ""
+  private(set) var accessibilityGuidance = ""
   @ObservationIgnored private var observationRuntime: InputObservationRuntime?
   @ObservationIgnored private var inputSourceController: InputSourceController?
   @ObservationIgnored private var transactionCoordinator: CorrectionTransactionCoordinator?
@@ -98,22 +107,53 @@ final class AppModel {
   @ObservationIgnored private var manualCoordinator: ManualCorrectionCoordinator?
   @ObservationIgnored private var learningStore: LocalLearningStore?
   @ObservationIgnored private var shortcutManager: GlobalShortcutManager?
+  @ObservationIgnored private var automaticCorrectionPreference: AutomaticCorrectionPreference?
+  @ObservationIgnored private var launchAtLoginController: LaunchAtLoginController?
+  @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
+  @ObservationIgnored private var repeatedInputGuard = RepeatedInputGuard()
+  @ObservationIgnored private var repeatedInputFocusIdentity: FocusedElementIdentity?
 
   init() {
+    let automaticCorrectionPreference = AutomaticCorrectionPreference()
+    self.automaticCorrectionPreference = automaticCorrectionPreference
+    isCorrectionEnabled = automaticCorrectionPreference.isEnabled
     let inputSourceController = InputSourceController()
     self.inputSourceController = inputSourceController
-    transactionCoordinator = CorrectionTransactionCoordinator(inputSources: inputSourceController)
-    manualCoordinator = ManualCorrectionCoordinator(inputSources: inputSourceController)
     let learningStore = LocalLearningStore()
     self.learningStore = learningStore
     learningRules = learningStore.rules.entries
+    excludedApplications = learningStore.excludedApplicationBundleIdentifiers
     learningStoreRecovered = learningStore.recoveredFromCorruption
-    observationRuntime = InputObservationRuntime { [weak self] event in
-      self?.handleRuntimeEvent(event)
-    }
+    learningStorePermissionWarning = learningStore.permissionHardeningFailed
+    transactionCoordinator = CorrectionTransactionCoordinator(
+      inputSources: inputSourceController,
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      }
+    )
+    manualCoordinator = ManualCorrectionCoordinator(
+      inputSources: inputSourceController,
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      }
+    )
+    observationRuntime = InputObservationRuntime(
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      },
+      handler: { [weak self] event in
+        self?.handleRuntimeEvent(event)
+      }
+    )
     shortcutManager = GlobalShortcutManager { [weak self] action in
       self?.handleShortcut(action)
     }
+    let launchAtLoginController = LaunchAtLoginController()
+    self.launchAtLoginController = launchAtLoginController
+    launchAtLoginStatus = launchAtLoginController.status
+    externalApplicationTracker = ExternalApplicationTracker(
+      ownBundleIdentifier: Bundle.main.bundleIdentifier
+    )
     manualShortcut = Self.savedShortcut(forKey: "manualShortcut")
     undoShortcut = Self.savedShortcut(forKey: "undoShortcut")
     if !applyShortcutConfiguration(persist: false) {
@@ -152,6 +192,17 @@ final class AppModel {
 
   func refreshPermissions() {
     permissions = PlatformCapabilities.currentPermissionSnapshot()
+    if permissions.canMonitorInput {
+      inputMonitoringGuidance = ""
+    }
+    if permissions.isAccessibilityTrusted {
+      accessibilityGuidance = ""
+    }
+    if isCorrectionEnabled, permissions.isReady,
+      observationState == .stopped || observationState == .permissionRequired
+    {
+      _ = observationRuntime?.start()
+    }
   }
 
   func setCorrectionEnabled(_ enabled: Bool) {
@@ -159,29 +210,71 @@ final class AppModel {
       return
     }
     if enabled {
+      isCorrectionEnabled = true
+      automaticCorrectionPreference?.setEnabled(true)
       refreshPermissions()
       guard observationRuntime?.start() == true else {
-        isCorrectionEnabled = false
         return
       }
-      isCorrectionEnabled = true
     } else {
       observationRuntime?.stop()
       activeTransaction?.cancel()
       activeTransaction = nil
+      resetRepeatedInputGuard()
       isCorrectionEnabled = false
+      automaticCorrectionPreference?.setEnabled(false)
       correctionActivity = .idle
     }
   }
 
-  func requestInputMonitoring() {
-    PermissionController.requestInputMonitoring()
+  func resumeSavedCorrectionIfPossible() {
+    guard isCorrectionEnabled else { return }
     refreshPermissions()
   }
 
-  func requestAccessibility() {
-    PermissionController.requestAccessibility()
+  func refreshLaunchAtLoginStatus() {
+    launchAtLoginStatus = launchAtLoginController?.status ?? .unavailable
+  }
+
+  func setLaunchAtLoginEnabled(_ enabled: Bool) {
+    guard !isUpdatingLaunchAtLogin, let launchAtLoginController else { return }
+    isUpdatingLaunchAtLogin = true
+    launchAtLoginMessage = ""
+    Task { @MainActor [weak self] in
+      do {
+        try await launchAtLoginController.setEnabled(enabled)
+        self?.launchAtLoginStatus = launchAtLoginController.status
+        if self?.launchAtLoginStatus == .requiresApproval {
+          self?.launchAtLoginMessage = "macOS 로그인 항목 설정에서 한글변환을 허용하세요."
+        }
+      } catch {
+        self?.launchAtLoginStatus = launchAtLoginController.status
+        self?.launchAtLoginMessage = "로그인 실행 설정을 변경하지 못했습니다."
+      }
+      self?.isUpdatingLaunchAtLogin = false
+    }
+  }
+
+  func openLoginItemsSettings() {
+    launchAtLoginController?.openSystemSettings()
+  }
+
+  func requestInputMonitoring() {
+    _ = PermissionController.requestInputMonitoring()
     refreshPermissions()
+    guard !permissions.canMonitorInput else { return }
+    inputMonitoringGuidance =
+      "요청 창이 나타나지 않으면 목록의 +를 눌러 현재 한글변환 앱을 직접 추가하세요."
+    openInputMonitoringSettings()
+  }
+
+  func requestAccessibility() {
+    _ = PermissionController.requestAccessibility()
+    refreshPermissions()
+    guard !permissions.isAccessibilityTrusted else { return }
+    accessibilityGuidance =
+      "스위치가 켜져 있는데도 ‘필요함’이면 예전 한글변환 항목을 -로 제거한 뒤 현재 앱을 +로 다시 추가하세요."
+    openAccessibilitySettings()
   }
 
   func openInputMonitoringSettings() {
@@ -190,6 +283,28 @@ final class AppModel {
 
   func openAccessibilitySettings() {
     openSystemSettings(anchor: "Privacy_Accessibility")
+  }
+
+  func revealCurrentApplication() {
+    NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+  }
+
+  func relaunchApplication() {
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.activates = true
+    configuration.createsNewApplicationInstance = true
+    NSWorkspace.shared.openApplication(
+      at: Bundle.main.bundleURL,
+      configuration: configuration
+    ) { [weak self] _, error in
+      Task { @MainActor in
+        guard error == nil else {
+          self?.accessibilityGuidance = "앱을 다시 열지 못했습니다. 한글변환을 직접 종료한 뒤 다시 실행하세요."
+          return
+        }
+        NSApp.terminate(nil)
+      }
+    }
   }
 
   func convertSelectionOrLastWord() {
@@ -202,10 +317,15 @@ final class AppModel {
       let result = await manualCoordinator.convertSelectionOrLastWord()
       guard let self else { return }
       switch result {
-      case .corrected(let record), .cancelled(.sourceSwitchFailed(let record)):
+      case .corrected(let record):
         lastCorrectionRecord = record
         pendingNeverRecord = nil
-        correctionActivity = result.isFullyCorrected ? .manuallyCorrected : .sourceSwitchFailed
+        correctionActivity = .manuallyCorrected
+        deliverCorrectionFeedback()
+      case .cancelled(.sourceSwitchFailed(let record)):
+        lastCorrectionRecord = record
+        pendingNeverRecord = nil
+        correctionActivity = .sourceSwitchFailed
       case .cancelled:
         correctionActivity = .actionUnavailable
       }
@@ -279,6 +399,41 @@ final class AppModel {
     }
   }
 
+  func addExcludedApplication(_ bundleIdentifier: String) {
+    guard bundleIdentifier != Bundle.main.bundleIdentifier else {
+      learningMessage = "한글변환 자체는 제외할 수 없습니다."
+      return
+    }
+    do {
+      guard try learningStore?.addExcludedApplication(bundleIdentifier) == true else {
+        learningMessage = "예: com.example.Editor 형식의 bundle ID를 입력하세요."
+        return
+      }
+      refreshLearningRules(message: "앱 제외를 저장했습니다.")
+    } catch {
+      learningMessage = "앱 제외를 저장하지 못했습니다."
+    }
+  }
+
+  func excludeRecentlyUsedApplication() {
+    guard
+      let bundleIdentifier = externalApplicationTracker?.lastExternalBundleIdentifier
+    else {
+      learningMessage = "제외할 앱으로 전환한 뒤 설정으로 돌아오세요."
+      return
+    }
+    addExcludedApplication(bundleIdentifier)
+  }
+
+  func removeExcludedApplication(_ bundleIdentifier: String) {
+    do {
+      try learningStore?.removeExcludedApplication(bundleIdentifier)
+      refreshLearningRules(message: "앱 제외를 삭제했습니다.")
+    } catch {
+      learningMessage = "앱 제외를 삭제하지 못했습니다."
+    }
+  }
+
   func rememberLastUndoAsNever() {
     guard let record = pendingNeverRecord else { return }
     let pair = rulePair(from: record)
@@ -348,6 +503,9 @@ final class AppModel {
     switch event {
     case .stateChanged(let state):
       observationState = state
+      if state != .observing {
+        resetRepeatedInputGuard()
+      }
       refreshPermissions()
     case .wordCompleted(let word, let boundary, let focusIdentity):
       evaluateAndCorrect(word: word, boundary: boundary, focusIdentity: focusIdentity)
@@ -359,8 +517,18 @@ final class AppModel {
     boundary: WordBoundary,
     focusIdentity: FocusedElementIdentity
   ) {
+    guard activeTransaction == nil else {
+      return
+    }
+    if repeatedInputFocusIdentity != focusIdentity {
+      repeatedInputGuard.reset()
+      repeatedInputFocusIdentity = focusIdentity
+    }
+    if repeatedInputGuard.shouldSuppressCorrection(for: word) {
+      correctionActivity = .repeatedInputPreserved
+      return
+    }
     guard
-      activeTransaction == nil,
       let activeLanguage = inputSourceController?.currentSource()?.language,
       let transactionCoordinator
     else {
@@ -406,19 +574,13 @@ final class AppModel {
       }
       switch result {
       case .corrected(let record):
+        repeatedInputGuard.recordCorrection(for: word)
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .corrected
-        if UserDefaults.standard.object(forKey: "showCorrectionFeedback") == nil
-          || UserDefaults.standard.bool(forKey: "showCorrectionFeedback")
-        {
-          NSAccessibility.post(
-            element: NSApplication.shared,
-            notification: .announcementRequested,
-            userInfo: [.announcement: "한영 입력 교정을 완료했습니다."]
-          )
-        }
+        deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
+        repeatedInputGuard.recordCorrection(for: word)
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed
@@ -433,6 +595,26 @@ final class AppModel {
     switch action {
     case .manualConvert: convertSelectionOrLastWord()
     case .undo: undoLastCorrection()
+    }
+  }
+
+  private func resetRepeatedInputGuard() {
+    repeatedInputGuard.reset()
+    repeatedInputFocusIdentity = nil
+  }
+
+  private func deliverCorrectionFeedback() {
+    if UserDefaults.standard.object(forKey: "showCorrectionFeedback") == nil
+      || UserDefaults.standard.bool(forKey: "showCorrectionFeedback")
+    {
+      NSAccessibility.post(
+        element: NSApplication.shared,
+        notification: .announcementRequested,
+        userInfo: [.announcement: "한영 입력 교정을 완료했습니다."]
+      )
+    }
+    if UserDefaults.standard.bool(forKey: "playCorrectionSound") {
+      NSSound(named: NSSound.Name("Tink"))?.play()
     }
   }
 
@@ -474,6 +656,7 @@ final class AppModel {
 
   private func refreshLearningRules(message: String) {
     learningRules = learningStore?.rules.entries ?? []
+    excludedApplications = learningStore?.excludedApplicationBundleIdentifiers ?? []
     learningMessage = message
   }
 
@@ -489,12 +672,5 @@ final class AppModel {
       replacement.removeLast()
     }
     return (original, replacement)
-  }
-}
-
-extension ManualCorrectionResult {
-  fileprivate var isFullyCorrected: Bool {
-    if case .corrected = self { return true }
-    return false
   }
 }

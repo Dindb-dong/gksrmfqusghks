@@ -40,6 +40,48 @@ final class GlobalInputEventTapTests: XCTestCase {
     )
   }
 
+  func testEveryPhysicalSpecialSymbolKeyCompletesTheBufferedWord() {
+    let directSymbolKeys = [
+      kVK_ANSI_Grave, kVK_ANSI_Minus, kVK_ANSI_Equal, kVK_ANSI_LeftBracket,
+      kVK_ANSI_RightBracket, kVK_ANSI_Backslash, kVK_ANSI_Semicolon, kVK_ANSI_Quote,
+      kVK_ANSI_Comma, kVK_ANSI_Period, kVK_ANSI_Slash, kVK_ANSI_KeypadDecimal,
+      kVK_ANSI_KeypadMultiply, kVK_ANSI_KeypadPlus, kVK_ANSI_KeypadDivide,
+      kVK_ANSI_KeypadMinus, kVK_ANSI_KeypadEquals, kVK_ISO_Section, kVK_JIS_Yen,
+      kVK_JIS_Underscore, kVK_JIS_KeypadComma,
+    ]
+    for keyCode in directSymbolKeys {
+      XCTAssertEqual(
+        KeyEventInterpreter.interpret(keyCode: CGKeyCode(keyCode), flags: []),
+        .boundary(.punctuation),
+        "Expected key code \(keyCode) to complete the word"
+      )
+      XCTAssertEqual(
+        KeyEventInterpreter.interpret(keyCode: CGKeyCode(keyCode), flags: .maskShift),
+        .boundary(.punctuation),
+        "Expected shifted key code \(keyCode) to complete the word"
+      )
+    }
+  }
+
+  func testShiftedNumberRowSymbolsCompleteButDigitsInvalidate() {
+    let numberKeys = [
+      kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
+      kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9,
+    ]
+    for keyCode in numberKeys {
+      XCTAssertEqual(
+        KeyEventInterpreter.interpret(keyCode: CGKeyCode(keyCode), flags: .maskShift),
+        .boundary(.punctuation),
+        "Expected shifted number key code \(keyCode) to complete the word"
+      )
+      XCTAssertEqual(
+        KeyEventInterpreter.interpret(keyCode: CGKeyCode(keyCode), flags: []),
+        .invalidate(.unknownKey),
+        "Expected digit key code \(keyCode) to keep failing closed"
+      )
+    }
+  }
+
   func testSyntheticMarkerRoundTripsOnCGEvent() throws {
     let event = try XCTUnwrap(
       CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_A), keyDown: true)

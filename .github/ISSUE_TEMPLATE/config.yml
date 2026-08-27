@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sensitive security report
+    url: https://github.com/Dindb-dong/gksrmfqusghks/security/advisories/new
+    about: Report vulnerabilities privately. Do not post sensitive reproduction text publicly.

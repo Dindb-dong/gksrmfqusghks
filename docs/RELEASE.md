@@ -29,6 +29,26 @@
 
 Apple Developer ID certificate, keychain access, notarization profile, GitHub release mutation은 명시적으로 제공된 자격 증명과 권한이 있을 때만 수행합니다. 자격 증명이 없으면 소스·테스트·재현 가능한 unsigned artifact·정확한 남은 명령까지 완료하고 서명 완료로 주장하지 않습니다.
 
+## Reproducible commands
+
+Ad-hoc universal candidate:
+
+```sh
+HANKEY_CODESIGN_IDENTITY=- ./packaging/build-release.sh
+./packaging/verify-release.sh
+```
+
+Developer ID signed and notarized candidate:
+
+```sh
+export HANKEY_CODESIGN_IDENTITY='Developer ID Application: Example (TEAMID)'
+export HANKEY_NOTARY_PROFILE='keychain-profile-name'
+./packaging/build-release.sh
+HANKEY_EXPECT_NOTARIZED=1 ./packaging/verify-release.sh
+```
+
+`HANKEY_NOTARY_PROFILE` names credentials already stored with `xcrun notarytool store-credentials`; secrets are never passed as command arguments or committed. Publish the GitHub Release only from a clean merged `main` after the notarized verification and installed-app TCC smoke matrix pass.
+
 ## Versioning
 
 - Semantic Versioning

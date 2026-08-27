@@ -22,8 +22,10 @@ public enum InputObservationRuntimeEvent: Equatable, Sendable {
 @MainActor
 public final class InputObservationRuntime {
   public typealias Handler = @MainActor @Sendable (InputObservationRuntimeEvent) -> Void
+  public typealias ExclusionProvider = @MainActor (String?) -> Bool
 
   private let handler: Handler
+  private let isApplicationExcluded: ExclusionProvider
   private var buffer: WordBuffer
   private var state: InputObservationState = .stopped
   private var focusTracker = FocusIdentityTracker()
@@ -41,9 +43,11 @@ public final class InputObservationRuntime {
 
   public init(
     buffer: WordBuffer = WordBuffer(),
+    isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
     handler: @escaping Handler
   ) {
     self.buffer = buffer
+    self.isApplicationExcluded = isApplicationExcluded
     self.handler = handler
   }
 
@@ -129,8 +133,11 @@ public final class InputObservationRuntime {
     }
     let secureInput = permissions.isSecureInputEnabled
     let focusedContext = FocusedElementSecurityInspector.currentContext()
-    let mustProtect =
-      secureInput || focusedContext.state == .secure || focusedContext.surface != .standardText
+    let mustProtect = InputProtectionPolicy.mustProtect(
+      secureInput: secureInput,
+      focusedContext: focusedContext,
+      isApplicationExcluded: isApplicationExcluded(focusedContext.bundleIdentifier)
+    )
 
     if mustProtect {
       _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
@@ -168,5 +175,16 @@ public final class InputObservationRuntime {
 
   private func currentTimestamp() -> UInt64 {
     DispatchTime.now().uptimeNanoseconds
+  }
+}
+
+enum InputProtectionPolicy {
+  static func mustProtect(
+    secureInput: Bool,
+    focusedContext: FocusedElementContext,
+    isApplicationExcluded: Bool
+  ) -> Bool {
+    secureInput || focusedContext.state == .secure || focusedContext.surface != .standardText
+      || isApplicationExcluded
   }
 }

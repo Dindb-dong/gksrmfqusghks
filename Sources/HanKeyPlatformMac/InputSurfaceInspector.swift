@@ -55,7 +55,7 @@ public enum InputSurfaceInspector {
     "com.microsoft.edgemac", "company.thebrowser.browser", "org.mozilla.firefox",
   ]
   private static let terminals: Set<String> = [
-    "com.apple.terminal", "com.googlecode.iterm2", "dev.warp.warp-stable",
+    "com.apple.terminal", "com.cmuxterm.app", "com.googlecode.iterm2", "dev.warp.warp-stable",
     "io.alacritty", "net.kovidgoyal.kitty",
   ]
   private static let terminalPrefixes = ["com.mitchellh.ghostty"]

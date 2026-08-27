@@ -29,6 +29,7 @@ final class InputSurfaceInspectorTests: XCTestCase {
     let field = AccessibilityElementDescriptor(role: kAXTextAreaRole as String, subrole: nil)
     let fixtures: [(String, InputSurface)] = [
       ("com.apple.Terminal", .terminal),
+      ("com.cmuxterm.app", .terminal),
       ("com.microsoft.VSCode", .ide),
       ("com.jetbrains.intellij.ce", .ide),
       ("com.1password.1password", .passwordManager),
@@ -91,6 +92,30 @@ final class InputSurfaceInspectorTests: XCTestCase {
         securityState: .editable
       ),
       .standardText
+    )
+  }
+
+  func testUserExclusionProtectsOtherwiseStandardField() {
+    let context = FocusedElementContext(
+      state: .editable,
+      identity: FocusedElementIdentity(processID: 1, elementHash: 1),
+      surface: .standardText,
+      bundleIdentifier: "com.example.PrivateEditor"
+    )
+
+    XCTAssertTrue(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: true
+      )
+    )
+    XCTAssertFalse(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: false
+      )
     )
   }
 }

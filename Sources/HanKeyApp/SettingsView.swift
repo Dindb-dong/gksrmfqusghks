@@ -16,10 +16,12 @@ struct SettingsView: View {
   @Bindable var model: AppModel
   @State private var section: SettingsSection = .general
   @AppStorage("showCorrectionFeedback") private var showCorrectionFeedback = true
+  @AppStorage("playCorrectionSound") private var playCorrectionSound = false
   @State private var ruleOriginal = ""
   @State private var ruleReplacement = ""
   @State private var ruleBehavior: LearningRuleBehavior = .never
   @State private var confirmsLearningReset = false
+  @State private var excludedBundleIdentifier = ""
 
   var body: some View {
     VStack(spacing: 0) {
@@ -53,6 +55,9 @@ struct SettingsView: View {
       .scrollContentBackground(.hidden)
     }
     .frame(minWidth: 560, idealWidth: 620, maxWidth: 760, minHeight: 440, idealHeight: 500)
+    .task {
+      model.refreshLaunchAtLoginStatus()
+    }
   }
 
   @ViewBuilder
@@ -70,7 +75,32 @@ struct SettingsView: View {
       .disabled(!model.isCorrectionEnabled && !model.permissions.isReady)
 
       LabeledContent("최근 동작", value: model.correctionActivity.title)
-      Toggle("VoiceOver 교정 알림", isOn: $showCorrectionFeedback)
+    }
+
+    Section("시작과 피드백") {
+      Toggle("교정 알림", isOn: $showCorrectionFeedback)
+        .accessibilityHint("VoiceOver로 교정 완료를 알립니다.")
+      Toggle("교정 효과음", isOn: $playCorrectionSound)
+
+      Toggle(
+        "로그인 시 한글변환 실행",
+        isOn: Binding(
+          get: { model.launchAtLoginStatus.isEnabled },
+          set: { model.setLaunchAtLoginEnabled($0) }
+        )
+      )
+      .disabled(model.isUpdatingLaunchAtLogin || model.launchAtLoginStatus == .unavailable)
+      LabeledContent("로그인 실행 상태", value: model.launchAtLoginStatus.title)
+      if model.launchAtLoginStatus == .requiresApproval {
+        Button("로그인 항목 설정 열기") {
+          model.openLoginItemsSettings()
+        }
+      }
+      if !model.launchAtLoginMessage.isEmpty {
+        Text(model.launchAtLoginMessage)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
     }
 
     Section("권한") {
@@ -78,15 +108,21 @@ struct SettingsView: View {
         title: "입력 모니터링",
         explanation: "물리 키 위치를 읽어 현재 단어만 메모리에서 판별합니다.",
         isGranted: model.permissions.canMonitorInput,
+        guidance: model.inputMonitoringGuidance,
         request: model.requestInputMonitoring,
-        openSettings: model.openInputMonitoringSettings
+        openSettings: model.openInputMonitoringSettings,
+        revealApplication: model.revealCurrentApplication,
+        relaunchApplication: model.relaunchApplication
       )
       PermissionRow(
         title: "손쉬운 사용",
         explanation: "교정 직전 포커스와 범위를 확인하고 해당 단어만 바꿉니다.",
         isGranted: model.permissions.isAccessibilityTrusted,
+        guidance: model.accessibilityGuidance,
         request: model.requestAccessibility,
-        openSettings: model.openAccessibilitySettings
+        openSettings: model.openAccessibilitySettings,
+        revealApplication: model.revealCurrentApplication,
+        relaunchApplication: model.relaunchApplication
       )
 
       Button("권한 상태 새로고침") {
@@ -106,6 +142,48 @@ struct SettingsView: View {
       Label("브라우저 주소창", systemImage: "link")
       Label("터미널·IDE·원격 데스크톱", systemImage: "terminal")
       Text("지원 여부를 확신할 수 없으면 교정하지 않습니다. 클립보드 fallback도 사용하지 않습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    }
+
+    Section("사용자 앱 제외") {
+      TextField("Bundle ID (예: com.example.Editor)", text: $excludedBundleIdentifier)
+      HStack {
+        Button("Bundle ID 추가") {
+          model.addExcludedApplication(excludedBundleIdentifier)
+          if model.learningMessage == "앱 제외를 저장했습니다." {
+            excludedBundleIdentifier = ""
+          }
+        }
+        .disabled(excludedBundleIdentifier.isEmpty)
+        Button("최근 사용 앱 제외") {
+          model.excludeRecentlyUsedApplication()
+        }
+      }
+      Text("제외할 앱으로 한 번 전환한 뒤 설정으로 돌아오면 최근 앱을 바로 추가할 수 있습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+
+      if model.excludedApplications.isEmpty {
+        Text("추가로 제외한 앱이 없습니다.")
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(model.excludedApplications, id: \.self) { bundleIdentifier in
+          HStack {
+            Text(bundleIdentifier)
+              .textSelection(.enabled)
+            Spacer()
+            Button(role: .destructive) {
+              model.removeExcludedApplication(bundleIdentifier)
+            } label: {
+              Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(bundleIdentifier) 앱 제외 삭제")
+          }
+        }
+      }
+      Text("내장 보호 앱과 보안 필드는 이 목록에서 해제할 수 없습니다.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
@@ -154,6 +232,15 @@ struct SettingsView: View {
         Label(
           "손상된 규칙 파일을 격리하고 빈 규칙으로 복구했습니다.",
           systemImage: "exclamationmark.triangle"
+        )
+      }
+    }
+
+    if model.learningStorePermissionWarning {
+      Section {
+        Label(
+          "규칙 파일 권한을 강화하지 못했습니다. 새 규칙 저장을 중단하고 파일 권한을 확인하세요.",
+          systemImage: "lock.trianglebadge.exclamationmark"
         )
       }
     }
@@ -222,10 +309,10 @@ struct SettingsView: View {
         Button("JSON으로 내보내기…") {
           model.exportLearningRules()
         }
-        Button("모든 규칙 초기화", role: .destructive) {
+        Button("모든 로컬 데이터 초기화", role: .destructive) {
           confirmsLearningReset = true
         }
-        .disabled(model.learningRules.isEmpty)
+        .disabled(model.learningRules.isEmpty && model.excludedApplications.isEmpty)
       }
       if !model.learningMessage.isEmpty {
         Text(model.learningMessage)
@@ -237,16 +324,16 @@ struct SettingsView: View {
         .foregroundStyle(.secondary)
     }
     .confirmationDialog(
-      "모든 로컬 규칙을 초기화할까요?",
+      "모든 로컬 데이터를 초기화할까요?",
       isPresented: $confirmsLearningReset,
       titleVisibility: .visible
     ) {
-      Button("모든 규칙 초기화", role: .destructive) {
+      Button("모든 로컬 데이터 초기화", role: .destructive) {
         model.resetLearningRules()
       }
       Button("취소", role: .cancel) {}
     } message: {
-      Text("이 작업은 되돌릴 수 없습니다. 자동 교정 엔진과 권한 설정은 유지됩니다.")
+      Text("단어 규칙과 사용자 앱 제외를 삭제합니다. 자동 교정과 권한 설정은 유지됩니다.")
     }
   }
 

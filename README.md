@@ -17,7 +17,16 @@ gksrmffh   → 한글로
 
 ## 현재 상태
 
-프로덕션 v1 제품 계약과 Swift 네이티브 scaffold가 마련됐습니다. 자동 교정 기능은 아직 구현되지 않았으며, 이후 기능은 Git worktree와 PR로 순차 개발합니다.
+프로덕션 v1 구현과 공개 릴리스 파이프라인이 준비됐습니다. 앱은 macOS 14 이상에서 ABC↔두벌식 입력 실수를 고신뢰일 때만 자동 교정하며, 수동 변환·한 단계 Undo·로컬 Always/Never 규칙·사용자 앱 제외를 제공합니다. 자동 교정 opt-in은 재실행 후에도 유지되며 로그인 실행, 교정 알림, 효과음은 각각 독립적으로 선택할 수 있습니다.
+
+## 설치
+
+1. [GitHub Releases](https://github.com/Dindb-dong/gksrmfqusghks/releases)에서 최신 공증 DMG를 받습니다.
+2. `SHA256SUMS.txt`로 다운로드를 확인합니다.
+3. DMG의 `HanKey.app`을 Applications로 옮기고 실행합니다.
+4. 첫 실행 안내를 읽고 Input Monitoring과 Accessibility 권한을 직접 허용합니다.
+
+자세한 설치·업데이트·삭제 절차는 [설치 안내](docs/INSTALL.md)를 참고하세요.
 
 ## 개발
 
@@ -26,7 +35,7 @@ swift test
 ./scripts/check.sh
 ```
 
-`./scripts/check.sh`는 Swift format lint, 테스트, 런타임 네트워크 API 금지 검사, ad-hoc 서명된 Release 앱 번들 생성을 순서대로 검증합니다. 결과 앱은 `dist/HanKey.app`에 생성됩니다.
+`./scripts/check.sh`는 Swift format lint, 테스트, 네트워크·클립보드·전체 필드 AX·콘텐츠 로깅 금지 검사, ad-hoc Hardened Runtime Release 앱 생성을 검증합니다. `./packaging/build-release.sh`는 universal app, ZIP, DMG, SBOM, checksum을 만들고 환경이 제공되면 Apple 공증까지 수행합니다.
 
 ## 문서
 
@@ -39,9 +48,12 @@ swift test
 - [의존성 목록](docs/DEPENDENCIES.md)
 - [호환성 정책](docs/COMPATIBILITY.md)
 - [릴리스 계획](docs/RELEASE.md)
+- [설치·업데이트·삭제](docs/INSTALL.md)
+- [개인정보 처리방침](PRIVACY.md)
+- [지원](SUPPORT.md)
 - [기여 및 Git 워크플로](CONTRIBUTING.md)
 
-## 예정 기술 스택
+## 기술 스택
 
 - Swift 6.2
 - SwiftUI + AppKit

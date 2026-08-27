@@ -80,6 +80,28 @@ final class ManualCorrectionCoordinatorTests: XCTestCase {
     XCTAssertEqual(rewriter.replaceCount, 0)
   }
 
+  func testUserExcludedApplicationBlocksManualMutationBeforeTextRead() async {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmffh",
+      selection: TextUTF16Range(location: 8, length: 0),
+      identity: identity,
+      bundleIdentifier: "com.example.PrivateEditor"
+    )
+    let sources = ManualFakeSources(language: .english)
+    let coordinator = ManualCorrectionCoordinator(
+      rewriter: rewriter,
+      inputSources: sources,
+      isApplicationExcluded: { $0 == "com.example.PrivateEditor" },
+      verificationAttempts: 1,
+      delay: {}
+    )
+
+    let result = await coordinator.convertSelectionOrLastWord()
+
+    XCTAssertEqual(result, .cancelled(.selectionUnavailable))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+  }
+
   private func makeCoordinator(
     rewriter: ManualFakeRewriter,
     sources: ManualFakeSources
@@ -98,16 +120,27 @@ private final class ManualFakeRewriter: FocusedTextRewriting {
   var document: String
   var selection: TextUTF16Range
   var identity: FocusedElementIdentity
+  var bundleIdentifier: String?
   private(set) var replaceCount = 0
 
-  init(document: String, selection: TextUTF16Range, identity: FocusedElementIdentity) {
+  init(
+    document: String,
+    selection: TextUTF16Range,
+    identity: FocusedElementIdentity,
+    bundleIdentifier: String? = nil
+  ) {
     self.document = document
     self.selection = selection
     self.identity = identity
+    self.bundleIdentifier = bundleIdentifier
   }
 
   func currentSnapshot() -> FocusedTextSnapshot? {
-    FocusedTextSnapshot(identity: identity, selection: selection)
+    FocusedTextSnapshot(
+      identity: identity,
+      selection: selection,
+      bundleIdentifier: bundleIdentifier
+    )
   }
 
   func text(in range: TextUTF16Range, matching snapshot: FocusedTextSnapshot) -> String? {
