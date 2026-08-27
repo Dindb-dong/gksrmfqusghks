@@ -121,6 +121,7 @@ final class AppModel {
   @ObservationIgnored private var lastDeletionCaretLocation: Int?
   @ObservationIgnored private var deletionInspection: Task<Void, Never>?
   @ObservationIgnored private var deletionTextRewriter = FocusedTextRewriter()
+  @ObservationIgnored private var neverRuleReviewNotifier: NeverRuleReviewNotifier?
 
   init() {
     let automaticCorrectionPreference = AutomaticCorrectionPreference()
@@ -179,6 +180,11 @@ final class AppModel {
     externalApplicationTracker = ExternalApplicationTracker(
       ownBundleIdentifier: Bundle.main.bundleIdentifier
     )
+    let neverRuleReviewNotifier = NeverRuleReviewNotifier { [weak self] ruleID, decision in
+      self?.reviewAutomaticallyExcludedRule(id: ruleID, decision: decision)
+    }
+    self.neverRuleReviewNotifier = neverRuleReviewNotifier
+    neverRuleReviewNotifier.start()
     manualShortcut = Self.savedShortcut(forKey: "manualShortcut")
     undoShortcut = Self.savedShortcut(forKey: "undoShortcut")
     if !applyShortcutConfiguration(persist: false) {
@@ -217,6 +223,10 @@ final class AppModel {
 
   var neverConvertRules: [LearningRuleEntry] {
     learningRules.filter { $0.behavior == .never }
+  }
+
+  var alwaysConvertRules: [LearningRuleEntry] {
+    learningRules.filter { $0.behavior == .always }
   }
 
   func refreshPermissions() {
@@ -449,6 +459,15 @@ final class AppModel {
       return
     }
     addLearningRule(original: original, replacement: replacement, behavior: .never)
+  }
+
+  func addAlwaysConvertToken(_ token: String) {
+    let original = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let replacement = DubeolsikConverter.oppositeLayoutCandidate(for: original) else {
+      learningMessage = "한글 또는 영문 한 단어를 입력하세요."
+      return
+    }
+    addLearningRule(original: original, replacement: replacement, behavior: .always)
   }
 
   func addExcludedApplication(_ bundleIdentifier: String) {
@@ -849,14 +868,40 @@ final class AppModel {
 
   private func rememberAutomaticallyExcludedPair(original: String, replacement: String) {
     do {
-      _ = try learningStore?.upsert(
+      guard let entry = try learningStore?.upsert(
         original: original,
         replacement: replacement,
         behavior: .never
-      )
+      ) else { return }
       refreshLearningRules(message: "삭제 후 다시 입력한 단어를 변환 제외에 추가했습니다.")
+      neverRuleReviewNotifier?.notify(ruleID: entry.id)
     } catch {
       learningMessage = "변환 제외 규칙을 저장하지 못했습니다."
+    }
+  }
+
+  private func reviewAutomaticallyExcludedRule(
+    id: UUID,
+    decision: NeverRuleReviewDecision
+  ) {
+    guard let rule = learningStore?.rules.entries.first(where: { $0.id == id }) else { return }
+    switch decision {
+    case .accept:
+      learningMessage = "변환 제외 규칙을 유지합니다."
+    case .rejectAndAlwaysConvert:
+      do {
+        guard
+          try learningStore?.upsert(
+            original: rule.original,
+            replacement: rule.replacement,
+            behavior: .always
+          ) != nil
+        else { return }
+        resetRepeatedInputGuard()
+        refreshLearningRules(message: "해당 단어를 항상 변환 규칙으로 옮겼습니다.")
+      } catch {
+        learningMessage = "항상 변환 규칙으로 옮기지 못했습니다."
+      }
     }
   }
 
