@@ -3,6 +3,11 @@ import HanKeyCore
 import XCTest
 
 final class DubeolsikConverterTests: XCTestCase {
+  func testDerivesOppositeLayoutPairForDirectNeverConvertEntry() {
+    XCTAssertEqual(DubeolsikConverter.oppositeLayoutCandidate(for: "ㅣㄷ퍄ㅐㄴㅁ"), "leviosa")
+    XCTAssertEqual(DubeolsikConverter.oppositeLayoutCandidate(for: "hamburger"), "ㅗ므ㅠㅕㄱㅎㄷㄱ")
+    XCTAssertNil(DubeolsikConverter.oppositeLayoutCandidate(for: "  "))
+  }
   func testProductExamplesInBothDirections() {
     XCTAssertEqual(DubeolsikConverter.compose("gksrmffh"), "한글로")
     XCTAssertEqual(DubeolsikConverter.decomposeToQWERTY("한글로"), "gksrmffh")

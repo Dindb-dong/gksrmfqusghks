@@ -215,6 +215,10 @@ final class AppModel {
     pendingNeverRecord != nil
   }
 
+  var neverConvertRules: [LearningRuleEntry] {
+    learningRules.filter { $0.behavior == .never }
+  }
+
   func refreshPermissions() {
     permissions = PlatformCapabilities.currentPermissionSnapshot()
     if permissions.canMonitorInput {
@@ -431,10 +435,20 @@ final class AppModel {
   func removeLearningRule(id: UUID) {
     do {
       try learningStore?.remove(id: id)
+      resetRepeatedInputGuard()
       refreshLearningRules(message: "로컬 규칙을 삭제했습니다.")
     } catch {
       learningMessage = "로컬 규칙을 삭제하지 못했습니다."
     }
+  }
+
+  func addNeverConvertToken(_ token: String) {
+    let original = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let replacement = DubeolsikConverter.oppositeLayoutCandidate(for: original) else {
+      learningMessage = "한글 또는 영문 한 단어를 입력하세요."
+      return
+    }
+    addLearningRule(original: original, replacement: replacement, behavior: .never)
   }
 
   func addExcludedApplication(_ bundleIdentifier: String) {

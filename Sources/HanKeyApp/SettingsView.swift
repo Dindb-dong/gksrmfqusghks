@@ -5,6 +5,7 @@ import SwiftUI
 private enum SettingsSection: String, CaseIterable, Identifiable {
   case general = "일반"
   case safety = "안전"
+  case neverConvert = "변환 제외"
   case shortcuts = "단축키"
   case learning = "학습"
   case about = "정보"
@@ -20,6 +21,7 @@ struct SettingsView: View {
   @State private var ruleOriginal = ""
   @State private var ruleReplacement = ""
   @State private var ruleBehavior: LearningRuleBehavior = .never
+  @State private var neverConvertToken = ""
   @State private var confirmsLearningReset = false
   @State private var showsApplicationPicker = false
 
@@ -43,6 +45,8 @@ struct SettingsView: View {
           generalSettings
         case .safety:
           safetySettings
+        case .neverConvert:
+          neverConvertSettings
         case .shortcuts:
           shortcutSettings
         case .learning:
@@ -54,7 +58,7 @@ struct SettingsView: View {
       .formStyle(.grouped)
       .scrollContentBackground(.hidden)
     }
-    .frame(minWidth: 560, idealWidth: 620, maxWidth: 760, minHeight: 440, idealHeight: 500)
+    .frame(minWidth: 660, idealWidth: 700, maxWidth: 820, minHeight: 440, idealHeight: 520)
     .task {
       model.refreshLaunchAtLoginStatus()
     }
@@ -65,6 +69,62 @@ struct SettingsView: View {
       ) { application in
         model.addExcludedApplication(application.bundleIdentifier)
       }
+    }
+  }
+
+  @ViewBuilder
+  private var neverConvertSettings: some View {
+    Section("변환하지 않을 단어 추가") {
+      TextField("한글 또는 영문 입력", text: $neverConvertToken)
+        .onSubmit { addNeverConvertToken() }
+      Button("변환 제외에 추가") {
+        addNeverConvertToken()
+      }
+      .disabled(neverConvertToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      Text("반대 자판 후보는 자동으로 계산합니다. 문장 전체나 키 입력 기록은 저장하지 않습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    }
+
+    Section("안 바뀌는 목록") {
+      if model.neverConvertRules.isEmpty {
+        ContentUnavailableView(
+          "변환 제외 없음",
+          systemImage: "text.badge.xmark",
+          description: Text("직접 추가하거나, 교정 결과를 정확히 지운 뒤 같은 입력을 다시 치면 여기에 표시됩니다.")
+        )
+      } else {
+        ForEach(model.neverConvertRules) { rule in
+          HStack {
+            VStack(alignment: .leading, spacing: 3) {
+              Text(rule.original)
+              Text("반대 자판: \(rule.replacement)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(role: .destructive) {
+              model.removeLearningRule(id: rule.id)
+            } label: {
+              Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(rule.original) 변환 제외 삭제")
+          }
+        }
+      }
+      if !model.learningMessage.isEmpty {
+        Text(model.learningMessage)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private func addNeverConvertToken() {
+    model.addNeverConvertToken(neverConvertToken)
+    if model.learningMessage == "로컬 규칙을 저장했습니다." {
+      neverConvertToken = ""
     }
   }
 
