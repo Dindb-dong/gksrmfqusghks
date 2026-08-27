@@ -121,7 +121,6 @@ public final class TerminalCorrectionCoordinator {
       return .cancelled(.sourceChanged)
     }
     var expectedCaret: FocusedTextSnapshot?
-    var observedBoundaryAdvance = false
     for _ in 0..<settlingAttempts {
       await delay()
       guard currentSequence() == expectedEventSequence else {
@@ -138,6 +137,9 @@ public final class TerminalCorrectionCoordinator {
       guard !isApplicationExcluded(settlingContext.bundleIdentifier) else {
         return .cancelled(.applicationExcluded)
       }
+      guard inputSources.currentSource() == sourceBefore else {
+        return .cancelled(.sourceChanged)
+      }
       guard let candidateCaret = currentCaret() else {
         continue
       }
@@ -147,17 +149,33 @@ public final class TerminalCorrectionCoordinator {
       guard candidateCaret.selection.length == 0 else {
         return .cancelled(.selectionChanged)
       }
-      if let previousCaret = expectedCaret, candidateCaret != previousCaret {
-        let isSingleSpaceAdvance =
-          !observedBoundaryAdvance
-          && candidateCaret.identity == previousCaret.identity
-          && candidateCaret.selection.location == previousCaret.selection.location + 1
-        guard isSingleSpaceAdvance else {
-          return .cancelled(.selectionChanged)
-        }
-        observedBoundaryAdvance = true
+      guard let confirmation = currentCaret() else {
+        continue
       }
-      expectedCaret = candidateCaret
+      guard confirmation.identity == expectedFocus else {
+        return .cancelled(.focusChanged)
+      }
+      guard confirmation.selection.length == 0 else {
+        return .cancelled(.selectionChanged)
+      }
+      if confirmation == candidateCaret {
+        expectedCaret = confirmation
+        break
+      }
+      let isSingleSpaceAdvance =
+        confirmation.identity == candidateCaret.identity
+        && confirmation.selection.location == candidateCaret.selection.location + 1
+      guard isSingleSpaceAdvance else {
+        return .cancelled(.selectionChanged)
+      }
+      guard let advancedConfirmation = currentCaret() else {
+        continue
+      }
+      guard advancedConfirmation == confirmation else {
+        return .cancelled(.selectionChanged)
+      }
+      expectedCaret = advancedConfirmation
+      break
     }
     guard let expectedCaret else { return .cancelled(.selectionUnavailable) }
     let correctionStart = expectedCaret.selection.location - proposal.original.utf16.count - 1

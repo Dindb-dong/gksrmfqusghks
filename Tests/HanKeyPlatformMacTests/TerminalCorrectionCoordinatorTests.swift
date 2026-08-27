@@ -120,6 +120,49 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertEqual(writer.rewrites, [.init(count: 6, replacement: "compact", processID: 42)])
   }
 
+  func testStableTerminalCorrectsWithoutWaitingThroughEveryRetryWindow() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .english)
+    var sequence: UInt64 = 9
+    var delayCount = 0
+    let coordinator = TerminalCorrectionCoordinator(
+      rewriter: writer,
+      inputSources: sources,
+      currentContext: { self.context() },
+      currentSequence: { sequence },
+      currentCaret: {
+        FocusedTextSnapshot(
+          identity: self.identity,
+          selection: TextUTF16Range(
+            location: writer.rewrites.isEmpty ? 9 : 4,
+            length: 0
+          ),
+          bundleIdentifier: "com.cmuxterm.app"
+        )
+      },
+      isSecureInputEnabled: { false },
+      delay: {
+        delayCount += 1
+        if delayCount == 2 {
+          sequence = 10
+        }
+      }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal,
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    guard case .corrected = result else {
+      return XCTFail("Expected the stable first post-Space snapshot to correct, got \(result)")
+    }
+    XCTAssertEqual(delayCount, 2, "Only the pre-rewrite settle and post-rewrite verification may wait")
+    XCTAssertEqual(writer.rewrites.count, 1)
+  }
+
   func testInputSourceChangeDuringCmuxSettlingCancelsBeforeMutation() async {
     let writer = FakeTerminalWriter()
     let sources = FakeTerminalInputSources(language: .english)
@@ -139,7 +182,7 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
       isSecureInputEnabled: { false },
       delay: {
         delayCount += 1
-        if delayCount == 2 {
+        if delayCount == 1 {
           sources.changeLanguage(to: .korean)
         }
       }
