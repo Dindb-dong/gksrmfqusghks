@@ -8,7 +8,7 @@ final class LaunchAtLoginControllerTests: XCTestCase {
     XCTAssertEqual(LaunchAtLoginController.map(.notRegistered), .notRegistered)
     XCTAssertEqual(LaunchAtLoginController.map(.enabled), .enabled)
     XCTAssertEqual(LaunchAtLoginController.map(.requiresApproval), .requiresApproval)
-    XCTAssertEqual(LaunchAtLoginController.map(.notFound), .unavailable)
+    XCTAssertEqual(LaunchAtLoginController.map(.notFound), .repairRequired)
     XCTAssertTrue(LaunchAtLoginStatus.enabled.isEnabled)
     XCTAssertFalse(LaunchAtLoginStatus.requiresApproval.isEnabled)
   }

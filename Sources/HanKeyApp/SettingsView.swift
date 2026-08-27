@@ -89,9 +89,11 @@ struct SettingsView: View {
           set: { model.setLaunchAtLoginEnabled($0) }
         )
       )
-      .disabled(model.isUpdatingLaunchAtLogin || model.launchAtLoginStatus == .unavailable)
+      .disabled(model.isUpdatingLaunchAtLogin)
       LabeledContent("로그인 실행 상태", value: model.launchAtLoginStatus.title)
-      if model.launchAtLoginStatus == .requiresApproval {
+      if model.launchAtLoginStatus == .requiresApproval
+        || model.launchAtLoginStatus == .repairRequired
+      {
         Button("로그인 항목 설정 열기") {
           model.openLoginItemsSettings()
         }

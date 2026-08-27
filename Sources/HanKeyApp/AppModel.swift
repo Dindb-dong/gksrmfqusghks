@@ -233,7 +233,7 @@ final class AppModel {
   }
 
   func refreshLaunchAtLoginStatus() {
-    launchAtLoginStatus = launchAtLoginController?.status ?? .unavailable
+    launchAtLoginStatus = launchAtLoginController?.status ?? .repairRequired
   }
 
   func setLaunchAtLoginEnabled(_ enabled: Bool) {
@@ -246,10 +246,13 @@ final class AppModel {
         self?.launchAtLoginStatus = launchAtLoginController.status
         if self?.launchAtLoginStatus == .requiresApproval {
           self?.launchAtLoginMessage = "macOS 로그인 항목 설정에서 한글변환을 허용하세요."
+        } else if self?.launchAtLoginStatus == .repairRequired {
+          self?.launchAtLoginMessage = "등록 상태를 복구하지 못했습니다. 다시 시도하거나 로그인 항목 설정을 확인하세요."
         }
       } catch {
         self?.launchAtLoginStatus = launchAtLoginController.status
-        self?.launchAtLoginMessage = "로그인 실행 설정을 변경하지 못했습니다."
+        self?.launchAtLoginMessage =
+          "로그인 실행 설정을 변경하지 못했습니다. 시스템 로그인 항목에서 차단 여부를 확인한 뒤 다시 시도하세요."
       }
       self?.isUpdatingLaunchAtLogin = false
     }
