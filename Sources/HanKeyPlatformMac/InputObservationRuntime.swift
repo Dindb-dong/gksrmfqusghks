@@ -12,6 +12,11 @@ public enum InputObservationState: String, Equatable, Sendable {
 
 public enum InputObservationRuntimeEvent: Equatable, Sendable {
   case stateChanged(InputObservationState)
+  case physicalInput(
+    PhysicalInputActivity,
+    focusIdentity: FocusedElementIdentity,
+    surface: InputSurface
+  )
   case wordCompleted(
     BufferedWord,
     boundary: WordBoundary,
@@ -19,6 +24,12 @@ public enum InputObservationRuntimeEvent: Equatable, Sendable {
     surface: InputSurface,
     eventSequence: UInt64
   )
+}
+
+public enum PhysicalInputActivity: Equatable, Sendable {
+  case deletion(BackwardDeletionKind)
+  case nonDeletionInput
+  case invalidated(BufferInvalidationReason)
 }
 
 @MainActor
@@ -110,6 +121,15 @@ public final class InputObservationRuntime {
     case .tapRecovered:
       transition(to: .observing)
     case .buffer(let bufferObservation, _):
+      if let currentFocusIdentity {
+        handler(
+          .physicalInput(
+            physicalActivity(for: bufferObservation),
+            focusIdentity: currentFocusIdentity,
+            surface: currentSurface
+          )
+        )
+      }
       let action = buffer.handle(bufferObservation, at: timestamp)
       if case .completed(let word, let boundary) = action, let currentFocusIdentity {
         handler(
@@ -130,7 +150,24 @@ public final class InputObservationRuntime {
     guard refreshProtection(at: timestamp) else {
       return
     }
+    if let currentFocusIdentity {
+      handler(
+        .physicalInput(
+          .invalidated(reason),
+          focusIdentity: currentFocusIdentity,
+          surface: currentSurface
+        )
+      )
+    }
     _ = buffer.handle(.invalidate(reason), at: timestamp)
+  }
+
+  private func physicalActivity(for observation: BufferObservation) -> PhysicalInputActivity {
+    switch observation {
+    case .deleteBackward(let kind): .deletion(kind)
+    case .invalidate(let reason): .invalidated(reason)
+    case .printable, .boundary, .protectionChanged: .nonDeletionInput
+    }
   }
 
   @discardableResult

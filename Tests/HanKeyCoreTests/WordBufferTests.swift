@@ -21,13 +21,27 @@ final class WordBufferTests: XCTestCase {
     for token in try tokens("gksx") {
       _ = buffer.handle(.printable(token), at: 1)
     }
-    XCTAssertEqual(buffer.handle(.deleteBackward, at: 2), .none)
+    XCTAssertEqual(buffer.handle(.deleteBackward(.character), at: 2), .none)
     _ = buffer.handle(.printable(try XCTUnwrap(PhysicalKeyToken(ascii: "r"))), at: 3)
 
     guard case .completed(let word, _) = buffer.handle(.boundary(.returnKey), at: 4) else {
       return XCTFail("Expected a completed word")
     }
     XCTAssertEqual(word.qwerty, "gksr")
+  }
+
+  func testWordAndLineDeletionPurgeUnknownBufferExtent() throws {
+    for deletion in [BackwardDeletionKind.word, .line] {
+      var buffer = WordBuffer()
+      for token in try tokens("gksrmffh") {
+        _ = buffer.handle(.printable(token), at: 1)
+      }
+      XCTAssertEqual(
+        buffer.handle(.deleteBackward(deletion), at: 2),
+        .purged(.modifiedCommand)
+      )
+      XCTAssertTrue(buffer.tokens.isEmpty)
+    }
   }
 
   func testSecureInputPurgesAndNeverRestoresPreviousContent() throws {

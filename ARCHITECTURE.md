@@ -24,6 +24,7 @@ HanKeyApp
      ├─ DubeolsikComposer / Decomposer
      ├─ TokenSafetyClassifier
      ├─ BoundarySafetyPolicy / RepeatedInputGuard
+     ├─ CorrectionDeletionTracker
      ├─ LanguageScorer
      ├─ CorrectionDecisionEngine
      └─ LearningRules
@@ -73,6 +74,10 @@ protected
 ```
 
 모든 상태 전환에서 원문 버퍼의 생존 조건이 명시되어야 하며, `protected` 진입은 동기적으로 버퍼를 0으로 만듭니다.
+
+교정 의도 학습은 별도 휘발성 상태 기계로 관리합니다. 성공한 교정의 표시 문자 수만큼 같은 포커스에서 연속 Backspace가 관찰된 뒤 동일 `PhysicalKeyToken` 시퀀스가 재완료되어야 `Never convert`를 저장합니다. 합성 이벤트는 관찰하지 않으며 다른 실제 입력이나 컨텍스트 무효화가 끼면 상태를 폐기합니다.
+
+자동 `Never convert` 저장 후 `UserNotifications`에는 규칙 UUID만 전달하고 원문·후보 문자열은 제목, 본문, identifier, `userInfo`에 넣지 않습니다. 알림의 수락은 no-op, 거부는 로컬 저장소에서 UUID를 조회해 같은 쌍을 `Always convert`로 원자적으로 upsert합니다.
 
 ## 5. 한글 변환
 

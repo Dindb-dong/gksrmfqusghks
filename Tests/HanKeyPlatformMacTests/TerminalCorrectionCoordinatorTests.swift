@@ -19,7 +19,16 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
       expectedEventSequence: 9
     )
 
-    XCTAssertEqual(result, .corrected)
+    XCTAssertEqual(
+      result,
+      .corrected(
+        TerminalCorrectionRecord(
+          focusIdentity: identity,
+          correctionStart: 0,
+          correctedCaretLocation: 4
+        )
+      )
+    )
     XCTAssertEqual(writer.rewrites, [.init(count: 8, replacement: "한글로", processID: 42)])
     XCTAssertEqual(sources.selectedLanguages, [.korean])
   }
@@ -72,7 +81,7 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
         defer { readCount += 1 }
         return FocusedTextSnapshot(
           identity: self.identity,
-          selection: TextUTF16Range(location: readCount == 0 ? 8 : 9, length: 0),
+          selection: TextUTF16Range(location: readCount == 0 ? 9 : 10, length: 0),
           bundleIdentifier: "com.cmuxterm.app"
         )
       },
@@ -155,15 +164,21 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     excluded: Bool = false
   ) -> TerminalCorrectionCoordinator {
     let currentContext = context ?? self.context()
+    var caretReadCount = 0
     return TerminalCorrectionCoordinator(
       rewriter: writer,
       inputSources: sources,
       currentContext: { currentContext },
       currentSequence: { sequence },
       currentCaret: {
-        FocusedTextSnapshot(
+        defer { caretReadCount += 1 }
+        let locations = [9, 9, 4]
+        return FocusedTextSnapshot(
           identity: currentContext.identity ?? self.identity,
-          selection: TextUTF16Range(location: 8, length: 0),
+          selection: TextUTF16Range(
+            location: locations[min(caretReadCount, locations.count - 1)],
+            length: 0
+          ),
           bundleIdentifier: currentContext.bundleIdentifier
         )
       },

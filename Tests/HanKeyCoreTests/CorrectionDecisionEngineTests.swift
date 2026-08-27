@@ -25,6 +25,22 @@ final class CorrectionDecisionEngineTests: XCTestCase {
     XCTAssertEqual(proposal.targetLanguage, .english)
   }
 
+  func testCorrectsHamburgerPhysicalSequenceFromKoreanLayout() throws {
+    let malformed = DubeolsikConverter.compose("hamburger")
+    XCTAssertEqual(malformed, "ㅗ므ㅠㅕㄱㅎㄷㄱ")
+
+    let proposal = try correction(
+      for: request(
+        token: malformed,
+        activeLanguage: .korean,
+        candidateKnown: true
+      )
+    )
+
+    XCTAssertEqual(proposal.replacement, "hamburger")
+    XCTAssertEqual(proposal.targetLanguage, .english)
+  }
+
   func testKnownOriginalAndUnknownCandidateAreNotCorrected() {
     XCTAssertEqual(
       engine.decide(

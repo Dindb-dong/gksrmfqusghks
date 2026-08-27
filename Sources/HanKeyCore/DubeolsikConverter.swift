@@ -61,6 +61,18 @@ public enum DubeolsikConverter {
     return result
   }
 
+  public static func oppositeLayoutCandidate(for text: String) -> String? {
+    let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty, normalized.count <= 64 else { return nil }
+
+    let qwerty = decomposeToQWERTY(normalized)
+    if qwerty != normalized {
+      return qwerty
+    }
+    let hangul = compose(normalized)
+    return hangul == normalized ? nil : hangul
+  }
+
   private static func appendPrecomposedSyllable(_ scalar: UInt32, to result: inout String) {
     let syllableIndex = scalar - syllableBase
     let initialIndex = Int(syllableIndex / (medialCount * finalCount))

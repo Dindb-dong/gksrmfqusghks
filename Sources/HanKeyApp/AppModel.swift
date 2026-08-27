@@ -115,6 +115,13 @@ final class AppModel {
   @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
   @ObservationIgnored private var repeatedInputGuard = RepeatedInputGuard()
   @ObservationIgnored private var repeatedInputFocusIdentity: FocusedElementIdentity?
+  @ObservationIgnored private var correctionDeletionTracker = CorrectionDeletionTracker()
+  @ObservationIgnored private var deletionTrackingFocusIdentity: FocusedElementIdentity?
+  @ObservationIgnored private var deletionTrackingSurface: InputSurface?
+  @ObservationIgnored private var lastDeletionCaretLocation: Int?
+  @ObservationIgnored private var deletionInspection: Task<Void, Never>?
+  @ObservationIgnored private var deletionTextRewriter = FocusedTextRewriter()
+  @ObservationIgnored private var neverRuleReviewNotifier: NeverRuleReviewNotifier?
 
   init() {
     let automaticCorrectionPreference = AutomaticCorrectionPreference()
@@ -173,6 +180,11 @@ final class AppModel {
     externalApplicationTracker = ExternalApplicationTracker(
       ownBundleIdentifier: Bundle.main.bundleIdentifier
     )
+    let neverRuleReviewNotifier = NeverRuleReviewNotifier { [weak self] ruleID, decision in
+      self?.reviewAutomaticallyExcludedRule(id: ruleID, decision: decision)
+    }
+    self.neverRuleReviewNotifier = neverRuleReviewNotifier
+    neverRuleReviewNotifier.start()
     manualShortcut = Self.savedShortcut(forKey: "manualShortcut")
     undoShortcut = Self.savedShortcut(forKey: "undoShortcut")
     if !applyShortcutConfiguration(persist: false) {
@@ -207,6 +219,14 @@ final class AppModel {
 
   var canRememberLastUndoAsNever: Bool {
     pendingNeverRecord != nil
+  }
+
+  var neverConvertRules: [LearningRuleEntry] {
+    learningRules.filter { $0.behavior == .never }
+  }
+
+  var alwaysConvertRules: [LearningRuleEntry] {
+    learningRules.filter { $0.behavior == .always }
   }
 
   func refreshPermissions() {
@@ -425,10 +445,29 @@ final class AppModel {
   func removeLearningRule(id: UUID) {
     do {
       try learningStore?.remove(id: id)
+      resetRepeatedInputGuard()
       refreshLearningRules(message: "로컬 규칙을 삭제했습니다.")
     } catch {
       learningMessage = "로컬 규칙을 삭제하지 못했습니다."
     }
+  }
+
+  func addNeverConvertToken(_ token: String) {
+    let original = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let replacement = DubeolsikConverter.oppositeLayoutCandidate(for: original) else {
+      learningMessage = "한글 또는 영문 한 단어를 입력하세요."
+      return
+    }
+    addLearningRule(original: original, replacement: replacement, behavior: .never)
+  }
+
+  func addAlwaysConvertToken(_ token: String) {
+    let original = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let replacement = DubeolsikConverter.oppositeLayoutCandidate(for: original) else {
+      learningMessage = "한글 또는 영문 한 단어를 입력하세요."
+      return
+    }
+    addLearningRule(original: original, replacement: replacement, behavior: .always)
   }
 
   func addExcludedApplication(_ bundleIdentifier: String) {
@@ -539,6 +578,8 @@ final class AppModel {
         resetRepeatedInputGuard()
       }
       refreshPermissions()
+    case .physicalInput(let activity, let focusIdentity, let surface):
+      handlePhysicalInput(activity, focusIdentity: focusIdentity, surface: surface)
     case .wordCompleted(
       let word,
       let boundary,
@@ -570,10 +611,6 @@ final class AppModel {
       repeatedInputGuard.reset()
       repeatedInputFocusIdentity = focusIdentity
     }
-    if repeatedInputGuard.shouldSuppressCorrection(for: word) {
-      correctionActivity = .repeatedInputPreserved
-      return
-    }
     guard
       let activeLanguage = inputSourceController?.currentSource()?.language,
       let transactionCoordinator
@@ -589,6 +626,11 @@ final class AppModel {
     case .korean:
       original = DubeolsikConverter.compose(word.qwerty)
       candidate = DubeolsikConverter.decomposeToQWERTY(original)
+    }
+    if repeatedInputGuard.shouldSuppressCorrection(for: word) {
+      rememberAutomaticallyExcludedPair(original: original, replacement: candidate)
+      correctionActivity = .repeatedInputPreserved
+      return
     }
     let evidence = SystemLexiconEvidenceProvider.evidence(
       original: original,
@@ -632,13 +674,27 @@ final class AppModel {
       }
       switch result {
       case .corrected(let record):
-        repeatedInputGuard.recordCorrection(for: word)
+        beginDeletionTracking(
+          word: word,
+          focusIdentity: focusIdentity,
+          surface: surface,
+          correctionStart: record.replacedRange.location,
+          correctedCaretLocation: record.replacedRange.location
+            + record.replacementWithBoundary.utf16.count
+        )
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .corrected
         deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
-        repeatedInputGuard.recordCorrection(for: word)
+        beginDeletionTracking(
+          word: word,
+          focusIdentity: focusIdentity,
+          surface: surface,
+          correctionStart: record.replacedRange.location,
+          correctedCaretLocation: record.replacedRange.location
+            + record.replacementWithBoundary.utf16.count
+        )
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed
@@ -667,14 +723,26 @@ final class AppModel {
       )
       guard let self else { return }
       switch result {
-      case .corrected:
-        repeatedInputGuard.recordCorrection(for: word)
+      case .corrected(let record):
+        beginDeletionTracking(
+          word: word,
+          focusIdentity: focusIdentity,
+          surface: .terminal,
+          correctionStart: record.correctionStart,
+          correctedCaretLocation: record.correctedCaretLocation
+        )
         lastCorrectionRecord = nil
         pendingNeverRecord = nil
         correctionActivity = .corrected
         deliverCorrectionFeedback()
-      case .cancelled(.sourceSwitchFailed):
-        repeatedInputGuard.recordCorrection(for: word)
+      case .cancelled(.sourceSwitchFailed(let record)):
+        beginDeletionTracking(
+          word: word,
+          focusIdentity: focusIdentity,
+          surface: .terminal,
+          correctionStart: record.correctionStart,
+          correctedCaretLocation: record.correctedCaretLocation
+        )
         lastCorrectionRecord = nil
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed
@@ -682,6 +750,160 @@ final class AppModel {
         correctionActivity = .idle
       }
       activeTransaction = nil
+    }
+  }
+
+  private func beginDeletionTracking(
+    word: BufferedWord,
+    focusIdentity: FocusedElementIdentity,
+    surface: InputSurface,
+    correctionStart: Int,
+    correctedCaretLocation: Int
+  ) {
+    deletionInspection?.cancel()
+    deletionInspection = nil
+    correctionDeletionTracker.beginTracking(
+      word: word,
+      correctionStart: correctionStart,
+      correctedCaretLocation: correctedCaretLocation
+    )
+    deletionTrackingFocusIdentity = focusIdentity
+    deletionTrackingSurface = surface
+    lastDeletionCaretLocation = correctedCaretLocation
+    repeatedInputGuard.cancelPendingComparison()
+    repeatedInputFocusIdentity = focusIdentity
+  }
+
+  private func handlePhysicalInput(
+    _ activity: PhysicalInputActivity,
+    focusIdentity: FocusedElementIdentity,
+    surface: InputSurface
+  ) {
+    switch activity {
+    case .deletion:
+      guard correctionDeletionTracker.isTracking else {
+        repeatedInputGuard.cancelPendingComparison()
+        return
+      }
+      guard
+        deletionTrackingFocusIdentity == focusIdentity,
+        deletionTrackingSurface == surface,
+        let previousCaret = lastDeletionCaretLocation
+      else {
+        resetRepeatedInputGuard()
+        return
+      }
+      inspectCaretAfterDeletion(
+        expectedFocus: focusIdentity,
+        surface: surface,
+        previousCaret: previousCaret
+      )
+
+    case .nonDeletionInput:
+      if correctionDeletionTracker.isTracking {
+        clearDeletionTracking()
+      }
+
+    case .invalidated(let reason):
+      guard reason != .inputSourceChanged else { return }
+      if correctionDeletionTracker.isTracking {
+        clearDeletionTracking()
+      }
+      repeatedInputGuard.cancelPendingComparison()
+    }
+  }
+
+  private func inspectCaretAfterDeletion(
+    expectedFocus: FocusedElementIdentity,
+    surface: InputSurface,
+    previousCaret: Int
+  ) {
+    deletionInspection?.cancel()
+    deletionInspection = Task { @MainActor [weak self] in
+      guard let self else { return }
+      for _ in 0..<4 {
+        try? await Task.sleep(for: .milliseconds(8))
+        guard !Task.isCancelled else { return }
+        guard
+          let snapshot = currentCaretSnapshot(surface: surface),
+          snapshot.identity == expectedFocus,
+          snapshot.selection.length == 0
+        else {
+          resetRepeatedInputGuard()
+          return
+        }
+        let location = snapshot.selection.location
+        guard location != previousCaret else { continue }
+        lastDeletionCaretLocation = location
+        switch correctionDeletionTracker.observeCaret(location: location) {
+        case .correctionFullyDeleted(let word):
+          repeatedInputGuard.armSuppressionAfterDeletion(for: word)
+          repeatedInputFocusIdentity = expectedFocus
+          clearDeletionTracking()
+        case .cancelled:
+          clearDeletionTracking()
+        case .none:
+          deletionInspection = nil
+        }
+        return
+      }
+      clearDeletionTracking()
+    }
+  }
+
+  private func currentCaretSnapshot(surface: InputSurface) -> FocusedTextSnapshot? {
+    surface == .terminal
+      ? TerminalCaretInspector.currentSnapshot()
+      : deletionTextRewriter.currentSnapshot()
+  }
+
+  private func clearDeletionTracking() {
+    deletionInspection?.cancel()
+    deletionInspection = nil
+    correctionDeletionTracker.reset()
+    deletionTrackingFocusIdentity = nil
+    deletionTrackingSurface = nil
+    lastDeletionCaretLocation = nil
+  }
+
+  private func rememberAutomaticallyExcludedPair(original: String, replacement: String) {
+    do {
+      guard
+        let entry = try learningStore?.upsert(
+          original: original,
+          replacement: replacement,
+          behavior: .never
+        )
+      else { return }
+      refreshLearningRules(message: "삭제 후 다시 입력한 단어를 변환 제외에 추가했습니다.")
+      neverRuleReviewNotifier?.notify(ruleID: entry.id)
+    } catch {
+      learningMessage = "변환 제외 규칙을 저장하지 못했습니다."
+    }
+  }
+
+  private func reviewAutomaticallyExcludedRule(
+    id: UUID,
+    decision: NeverRuleReviewDecision
+  ) {
+    guard let rule = learningStore?.rules.entries.first(where: { $0.id == id }) else { return }
+    switch decision {
+    case .accept:
+      learningMessage = "변환 제외 규칙을 유지합니다."
+    case .rejectAndAlwaysConvert:
+      do {
+        guard
+          try learningStore?.upsert(
+            original: rule.original,
+            replacement: rule.replacement,
+            behavior: .always
+          ) != nil
+        else { return }
+        resetRepeatedInputGuard()
+        refreshLearningRules(message: "해당 단어를 항상 변환 규칙으로 옮겼습니다.")
+      } catch {
+        learningMessage = "항상 변환 규칙으로 옮기지 못했습니다."
+      }
     }
   }
 
@@ -693,6 +915,7 @@ final class AppModel {
   }
 
   private func resetRepeatedInputGuard() {
+    clearDeletionTracking()
     repeatedInputGuard.reset()
     repeatedInputFocusIdentity = nil
   }

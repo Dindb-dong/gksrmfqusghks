@@ -162,6 +162,16 @@ enum KeyEventInterpreter {
   ]
 
   static func interpret(keyCode: CGKeyCode, flags: CGEventFlags) -> BufferObservation {
+    if Int(keyCode) == kVK_Delete {
+      if flags.contains(.maskCommand) {
+        return .deleteBackward(.line)
+      }
+      if flags.contains(.maskAlternate) {
+        return .deleteBackward(.word)
+      }
+      return .deleteBackward(.character)
+    }
+
     let disallowedModifiers: CGEventFlags = [
       .maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn,
     ]
@@ -176,14 +186,14 @@ enum KeyEventInterpreter {
     }
 
     switch Int(keyCode) {
+    case kVK_CapsLock, kVK_JIS_Eisu, kVK_JIS_Kana:
+      return .invalidate(.inputSourceChanged)
     case kVK_Space:
       return .boundary(.space)
     case kVK_Return, kVK_ANSI_KeypadEnter:
       return .boundary(.returnKey)
     case kVK_Tab:
       return .boundary(.tab)
-    case kVK_Delete:
-      return .deleteBackward
     default:
       if specialSymbolKeys.contains(keyCode)
         || (flags.contains(.maskShift) && shiftedNumberSymbolKeys.contains(keyCode))

@@ -22,10 +22,16 @@ public enum BufferInvalidationReason: String, Equatable, Sendable {
 
 public enum BufferObservation: Equatable, Sendable {
   case printable(PhysicalKeyToken)
-  case deleteBackward
+  case deleteBackward(BackwardDeletionKind)
   case boundary(WordBoundary)
   case invalidate(BufferInvalidationReason)
   case protectionChanged(isProtected: Bool)
+}
+
+public enum BackwardDeletionKind: String, Equatable, Sendable {
+  case character
+  case word
+  case line
 }
 
 public struct BufferedWord: Equatable, Sendable {
@@ -99,9 +105,14 @@ public struct WordBuffer: Sendable {
       }
       return expired ? .purged(.idleTimeout) : .none
 
-    case .deleteBackward:
-      if !tokens.isEmpty {
-        tokens.removeLast()
+    case .deleteBackward(let kind):
+      if kind == .character {
+        if !tokens.isEmpty {
+          tokens.removeLast()
+        }
+      } else {
+        purge()
+        return .purged(.modifiedCommand)
       }
       lastActivityNanoseconds = tokens.isEmpty ? nil : timestampNanoseconds
       return expired ? .purged(.idleTimeout) : .none
