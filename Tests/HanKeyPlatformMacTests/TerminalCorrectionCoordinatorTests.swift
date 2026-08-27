@@ -33,6 +33,44 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertEqual(sources.selectedLanguages, [.korean])
   }
 
+  func testLeadingSlashOffsetsTerminalRewriteWithoutDeletingPrefix() async {
+    let writer = FakeTerminalWriter()
+    let sources = FakeTerminalInputSources(language: .korean)
+    let coordinator = makeCoordinator(
+      writer: writer,
+      sources: sources,
+      initialCaret: 8,
+      correctedCaret: 9
+    )
+    let original = "채ㅡㅔㅁㅊㅅ"
+
+    let result = await coordinator.perform(
+      proposal: CorrectionProposal(
+        original: original,
+        replacement: "compact",
+        targetLanguage: .english,
+        confidence: 1,
+        usedExplicitRule: false
+      ),
+      boundary: .space,
+      expectedFocus: identity,
+      expectedEventSequence: 9
+    )
+
+    XCTAssertEqual(
+      result,
+      .corrected(
+        TerminalCorrectionRecord(
+          focusIdentity: identity,
+          correctionStart: 1,
+          correctedCaretLocation: 9
+        )
+      )
+    )
+    XCTAssertEqual(writer.rewrites, [.init(count: 6, replacement: "compact", processID: 42)])
+    XCTAssertEqual(sources.selectedLanguages, [.english])
+  }
+
   func testEveryNonSpaceBoundaryFailsClosedBeforeMutation() async {
     for boundary in [WordBoundary.returnKey, .tab, .punctuation] {
       let writer = FakeTerminalWriter()
@@ -161,7 +199,9 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     sequence: UInt64 = 9,
     context: FocusedElementContext? = nil,
     secureInput: Bool = false,
-    excluded: Bool = false
+    excluded: Bool = false,
+    initialCaret: Int = 9,
+    correctedCaret: Int = 4
   ) -> TerminalCorrectionCoordinator {
     let currentContext = context ?? self.context()
     var caretReadCount = 0
@@ -172,7 +212,7 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
       currentSequence: { sequence },
       currentCaret: {
         defer { caretReadCount += 1 }
-        let locations = [9, 9, 4]
+        let locations = [initialCaret, initialCaret, correctedCaret]
         return FocusedTextSnapshot(
           identity: currentContext.identity ?? self.identity,
           selection: TextUTF16Range(

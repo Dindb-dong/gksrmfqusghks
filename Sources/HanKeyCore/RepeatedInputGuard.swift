@@ -2,49 +2,47 @@
 public struct RepeatedInputGuard: Sendable {
   public let maximumSuppressedWordCount: Int
 
-  private var pendingDeletedCorrectionTokens: [PhysicalKeyToken]?
-  private var suppressedTokenSequences: [[PhysicalKeyToken]] = []
+  private var pendingDeletedCorrectionWord: BufferedWord?
+  private var suppressedWords: [BufferedWord] = []
 
   public init(maximumSuppressedWordCount: Int = 32) {
     precondition(maximumSuppressedWordCount > 0)
     self.maximumSuppressedWordCount = maximumSuppressedWordCount
-    suppressedTokenSequences.reserveCapacity(maximumSuppressedWordCount)
+    suppressedWords.reserveCapacity(maximumSuppressedWordCount)
   }
 
   public mutating func armSuppressionAfterDeletion(for word: BufferedWord) {
-    pendingDeletedCorrectionTokens = word.tokens
+    pendingDeletedCorrectionWord = word
   }
 
   public mutating func shouldSuppressCorrection(for word: BufferedWord) -> Bool {
-    let tokens = word.tokens
-
-    if let pendingDeletedCorrectionTokens {
-      self.pendingDeletedCorrectionTokens = nil
-      if pendingDeletedCorrectionTokens == tokens {
-        rememberSuppressed(tokens)
+    if let pendingDeletedCorrectionWord {
+      self.pendingDeletedCorrectionWord = nil
+      if pendingDeletedCorrectionWord == word {
+        rememberSuppressed(word)
         return true
       }
     }
 
-    return suppressedTokenSequences.contains(tokens)
+    return suppressedWords.contains(word)
   }
 
   public mutating func cancelPendingComparison() {
-    pendingDeletedCorrectionTokens = nil
+    pendingDeletedCorrectionWord = nil
   }
 
   public mutating func reset() {
-    pendingDeletedCorrectionTokens = nil
-    suppressedTokenSequences.removeAll(keepingCapacity: true)
+    pendingDeletedCorrectionWord = nil
+    suppressedWords.removeAll(keepingCapacity: true)
   }
 
-  private mutating func rememberSuppressed(_ tokens: [PhysicalKeyToken]) {
-    guard !suppressedTokenSequences.contains(tokens) else {
+  private mutating func rememberSuppressed(_ word: BufferedWord) {
+    guard !suppressedWords.contains(word) else {
       return
     }
-    if suppressedTokenSequences.count == maximumSuppressedWordCount {
-      suppressedTokenSequences.removeFirst()
+    if suppressedWords.count == maximumSuppressedWordCount {
+      suppressedWords.removeFirst()
     }
-    suppressedTokenSequences.append(tokens)
+    suppressedWords.append(word)
   }
 }

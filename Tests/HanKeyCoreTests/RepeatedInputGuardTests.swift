@@ -42,6 +42,18 @@ final class RepeatedInputGuardTests: XCTestCase {
     XCTAssertFalse(guardrail.shouldSuppressCorrection(for: shifted))
   }
 
+  func testCommandPrefixIsPartOfRepeatedInputIdentity() throws {
+    let plain = try bufferedWord("compact")
+    let slash = BufferedWord(tokens: plain.tokens, leadingCommandPrefix: .slash)
+    var guardrail = RepeatedInputGuard()
+
+    guardrail.armSuppressionAfterDeletion(for: slash)
+
+    XCTAssertFalse(guardrail.shouldSuppressCorrection(for: plain))
+    guardrail.armSuppressionAfterDeletion(for: slash)
+    XCTAssertTrue(guardrail.shouldSuppressCorrection(for: slash))
+  }
+
   func testSuppressionMemoryIsBoundedAndEvictsOldest() throws {
     let first = try bufferedWord("skdltm")
     let second = try bufferedWord("gksrmf")

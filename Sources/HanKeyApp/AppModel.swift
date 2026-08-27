@@ -644,7 +644,8 @@ final class AppModel {
         surface: surface == .terminal ? .standardText : surface,
         explicitRule: learningStore?
           .behavior(original: original, replacement: candidate)?.explicitRule ?? .none,
-        lexiconEvidence: evidence
+        lexiconEvidence: evidence,
+        leadingCommandPrefix: word.leadingCommandPrefix
       )
     )
     guard case .correct(let proposal) = decision else {

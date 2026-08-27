@@ -59,4 +59,19 @@ final class TokenSafetyClassifierTests: XCTestCase {
       .excluded(.excludedApplication)
     )
   }
+
+  func testSingleLetterOptionIsTheOnlyShortCommandException() {
+    XCTAssertEqual(
+      classifier.classify(
+        token: "ㅍ",
+        surface: .standardText,
+        leadingCommandPrefix: .singleHyphen
+      ),
+      .eligible
+    )
+    XCTAssertEqual(
+      classifier.classify(token: "ㅍ", surface: .standardText, leadingCommandPrefix: .slash),
+      .excluded(.tooShort)
+    )
+  }
 }

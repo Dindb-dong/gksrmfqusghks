@@ -185,6 +185,17 @@ enum KeyEventInterpreter {
       )
     }
 
+    if !flags.contains(.maskShift) {
+      switch Int(keyCode) {
+      case kVK_ANSI_Slash:
+        return .commandPrefixSymbol(.slash)
+      case kVK_ANSI_Minus:
+        return .commandPrefixSymbol(.hyphen)
+      default:
+        break
+      }
+    }
+
     switch Int(keyCode) {
     case kVK_CapsLock, kVK_JIS_Eisu, kVK_JIS_Kana:
       return .invalidate(.inputSourceChanged)

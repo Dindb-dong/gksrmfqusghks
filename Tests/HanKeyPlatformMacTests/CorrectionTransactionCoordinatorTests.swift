@@ -30,6 +30,26 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(record.sourceAfter?.language, .korean)
   }
 
+  func testLeadingSlashIsPreservedWhileOnlyCommandBodyIsReplaced() async {
+    let original = "채ㅡㅔㅁㅊㅅ"
+    let rewriter = FakeTextRewriter(document: "/\(original) ", caret: 8, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .korean)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: original, replacement: "compact", target: .english),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    guard case .corrected(let record) = result else {
+      return XCTFail("Expected a committed command correction, got \(result)")
+    }
+    XCTAssertEqual(rewriter.document, "/compact ")
+    XCTAssertEqual(record.replacedRange.location, 1)
+    XCTAssertEqual(sources.selectedLanguages, [.english])
+  }
+
   func testPreservesObservedPunctuationInsteadOfSynthesizingIt() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh,", caret: 9, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)

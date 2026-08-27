@@ -22,10 +22,22 @@ public enum BufferInvalidationReason: String, Equatable, Sendable {
 
 public enum BufferObservation: Equatable, Sendable {
   case printable(PhysicalKeyToken)
+  case commandPrefixSymbol(CommandPrefixSymbol)
   case deleteBackward(BackwardDeletionKind)
   case boundary(WordBoundary)
   case invalidate(BufferInvalidationReason)
   case protectionChanged(isProtected: Bool)
+}
+
+public enum CommandPrefixSymbol: String, Equatable, Sendable {
+  case slash
+  case hyphen
+}
+
+public enum LeadingCommandPrefix: String, Equatable, Sendable {
+  case slash
+  case singleHyphen
+  case doubleHyphen
 }
 
 public enum BackwardDeletionKind: String, Equatable, Sendable {
@@ -36,9 +48,14 @@ public enum BackwardDeletionKind: String, Equatable, Sendable {
 
 public struct BufferedWord: Equatable, Sendable {
   public let tokens: [PhysicalKeyToken]
+  public let leadingCommandPrefix: LeadingCommandPrefix?
 
-  public init(tokens: [PhysicalKeyToken]) {
+  public init(
+    tokens: [PhysicalKeyToken],
+    leadingCommandPrefix: LeadingCommandPrefix? = nil
+  ) {
     self.tokens = tokens
+    self.leadingCommandPrefix = leadingCommandPrefix
   }
 
   public var qwerty: String {
@@ -59,6 +76,7 @@ public struct WordBuffer: Sendable {
 
   public private(set) var isProtected = false
   public private(set) var tokens: [PhysicalKeyToken] = []
+  public private(set) var leadingCommandPrefix: LeadingCommandPrefix?
   private var lastActivityNanoseconds: UInt64?
 
   public init(
@@ -105,28 +123,61 @@ public struct WordBuffer: Sendable {
       }
       return expired ? .purged(.idleTimeout) : .none
 
+    case .commandPrefixSymbol(let symbol):
+      if !tokens.isEmpty {
+        let word = BufferedWord(
+          tokens: tokens,
+          leadingCommandPrefix: leadingCommandPrefix
+        )
+        purge()
+        return .completed(word, boundary: .punctuation)
+      }
+
+      switch (leadingCommandPrefix, symbol) {
+      case (nil, .slash):
+        leadingCommandPrefix = .slash
+      case (nil, .hyphen):
+        leadingCommandPrefix = .singleHyphen
+      case (.singleHyphen, .hyphen):
+        leadingCommandPrefix = .doubleHyphen
+      default:
+        purge()
+        return .purged(.unknownKey)
+      }
+      lastActivityNanoseconds = timestampNanoseconds
+      return expired ? .purged(.idleTimeout) : .none
+
     case .deleteBackward(let kind):
       if kind == .character {
         if !tokens.isEmpty {
           tokens.removeLast()
+        } else {
+          leadingCommandPrefix = nil
         }
       } else {
         purge()
         return .purged(.modifiedCommand)
       }
-      lastActivityNanoseconds = tokens.isEmpty ? nil : timestampNanoseconds
+      lastActivityNanoseconds =
+        tokens.isEmpty && leadingCommandPrefix == nil ? nil : timestampNanoseconds
       return expired ? .purged(.idleTimeout) : .none
 
     case .boundary(let boundary):
       guard !expired, !tokens.isEmpty else {
+        if leadingCommandPrefix != nil {
+          purge()
+        }
         return expired ? .purged(.idleTimeout) : .none
       }
-      let word = BufferedWord(tokens: tokens)
+      let word = BufferedWord(
+        tokens: tokens,
+        leadingCommandPrefix: leadingCommandPrefix
+      )
       purge()
       return .completed(word, boundary: boundary)
 
     case .invalidate(let reason):
-      let hadContent = !tokens.isEmpty
+      let hadContent = !tokens.isEmpty || leadingCommandPrefix != nil
       purge()
       return hadContent || reason == .stopped ? .purged(reason) : .none
 
@@ -144,6 +195,7 @@ public struct WordBuffer: Sendable {
 
   private mutating func purge() {
     tokens.removeAll(keepingCapacity: true)
+    leadingCommandPrefix = nil
     lastActivityNanoseconds = nil
   }
 }

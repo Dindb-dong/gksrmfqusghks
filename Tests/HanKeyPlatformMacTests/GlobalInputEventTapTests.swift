@@ -48,11 +48,30 @@ final class GlobalInputEventTapTests: XCTestCase {
     )
   }
 
+  func testInterpretsOnlyUnshiftedSlashAndHyphenAsCommandPrefixSymbols() {
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Slash), flags: []),
+      .commandPrefixSymbol(.slash)
+    )
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: []),
+      .commandPrefixSymbol(.hyphen)
+    )
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Slash), flags: .maskShift),
+      .boundary(.punctuation)
+    )
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskShift),
+      .boundary(.punctuation)
+    )
+  }
+
   func testEveryPhysicalSpecialSymbolKeyCompletesTheBufferedWord() {
     let directSymbolKeys = [
-      kVK_ANSI_Grave, kVK_ANSI_Minus, kVK_ANSI_Equal, kVK_ANSI_LeftBracket,
+      kVK_ANSI_Grave, kVK_ANSI_Equal, kVK_ANSI_LeftBracket,
       kVK_ANSI_RightBracket, kVK_ANSI_Backslash, kVK_ANSI_Semicolon, kVK_ANSI_Quote,
-      kVK_ANSI_Comma, kVK_ANSI_Period, kVK_ANSI_Slash, kVK_ANSI_KeypadDecimal,
+      kVK_ANSI_Comma, kVK_ANSI_Period, kVK_ANSI_KeypadDecimal,
       kVK_ANSI_KeypadMultiply, kVK_ANSI_KeypadPlus, kVK_ANSI_KeypadDivide,
       kVK_ANSI_KeypadMinus, kVK_ANSI_KeypadEquals, kVK_ISO_Section, kVK_JIS_Yen,
       kVK_JIS_Underscore, kVK_JIS_KeypadComma,
@@ -69,6 +88,15 @@ final class GlobalInputEventTapTests: XCTestCase {
         "Expected shifted key code \(keyCode) to complete the word"
       )
     }
+
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Minus), flags: .maskShift),
+      .boundary(.punctuation)
+    )
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_Slash), flags: .maskShift),
+      .boundary(.punctuation)
+    )
   }
 
   func testShiftedNumberRowSymbolsCompleteButDigitsInvalidate() {
