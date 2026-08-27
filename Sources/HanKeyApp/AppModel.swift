@@ -111,6 +111,7 @@ final class AppModel {
   @ObservationIgnored private var launchAtLoginController: LaunchAtLoginController?
   @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
   @ObservationIgnored private var repeatedInputGuard = RepeatedInputGuard()
+  @ObservationIgnored private var repeatedInputFocusIdentity: FocusedElementIdentity?
 
   init() {
     let automaticCorrectionPreference = AutomaticCorrectionPreference()
@@ -219,6 +220,7 @@ final class AppModel {
       observationRuntime?.stop()
       activeTransaction?.cancel()
       activeTransaction = nil
+      resetRepeatedInputGuard()
       isCorrectionEnabled = false
       automaticCorrectionPreference?.setEnabled(false)
       correctionActivity = .idle
@@ -501,6 +503,9 @@ final class AppModel {
     switch event {
     case .stateChanged(let state):
       observationState = state
+      if state != .observing {
+        resetRepeatedInputGuard()
+      }
       refreshPermissions()
     case .wordCompleted(let word, let boundary, let focusIdentity):
       evaluateAndCorrect(word: word, boundary: boundary, focusIdentity: focusIdentity)
@@ -514,6 +519,10 @@ final class AppModel {
   ) {
     guard activeTransaction == nil else {
       return
+    }
+    if repeatedInputFocusIdentity != focusIdentity {
+      repeatedInputGuard.reset()
+      repeatedInputFocusIdentity = focusIdentity
     }
     if repeatedInputGuard.shouldSuppressCorrection(for: word) {
       correctionActivity = .repeatedInputPreserved
@@ -587,6 +596,11 @@ final class AppModel {
     case .manualConvert: convertSelectionOrLastWord()
     case .undo: undoLastCorrection()
     }
+  }
+
+  private func resetRepeatedInputGuard() {
+    repeatedInputGuard.reset()
+    repeatedInputFocusIdentity = nil
   }
 
   private func deliverCorrectionFeedback() {

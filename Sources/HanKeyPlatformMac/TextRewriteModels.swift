@@ -59,6 +59,7 @@ public enum CorrectionTransactionFailure: Equatable, Sendable {
   case selectionUnavailable
   case selectionChanged
   case textMismatch
+  case unsafeBoundary
   case replacementRejected
   case replacementUnverified
   case sourceSwitchFailed(CorrectionTransactionRecord)

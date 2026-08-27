@@ -83,6 +83,9 @@ public final class CorrectionTransactionCoordinator {
     let replacedRange = locatedText.range
     let observedText = locatedText.text
     let boundaryText = locatedText.boundary
+    guard BoundarySafetyPolicy().permitsAutomaticCorrection(boundary: boundaryText) else {
+      return .cancelled(.unsafeBoundary)
+    }
     let replacementWithBoundary = proposal.replacement + boundaryText
     guard
       rewriter.replace(

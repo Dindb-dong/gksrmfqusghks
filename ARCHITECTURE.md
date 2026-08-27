@@ -22,6 +22,7 @@ HanKeyApp
      ├─ KeyToken / WordBuffer
      ├─ DubeolsikComposer / Decomposer
      ├─ TokenSafetyClassifier
+     ├─ BoundarySafetyPolicy / RepeatedInputGuard
      ├─ LanguageScorer
      ├─ CorrectionDecisionEngine
      └─ LearningRules
@@ -138,7 +139,12 @@ score(text) = dictionary
 - 사용자가 승인한 Always/Never 단어쌍
 - 콘텐츠 없는 최근 오류 코드와 버전 정보
 
-저장 금지:
+메모리에서만 허용:
+
+- 현재 포커스에서 사용자가 같은 물리 키 입력을 반복해 교정을 거부한 의도를 나타내는 최대 32개의 bounded 토큰 시퀀스
+- 이 반복 입력 기억은 포커스 변경, 보호 상태, 권한 상실, 관찰 중지 또는 앱 종료 시 폐기
+
+디스크 저장 금지:
 
 - 원시 키 이벤트 또는 키코드 연속열
 - 현재·과거 단어 버퍼

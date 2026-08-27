@@ -85,9 +85,9 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
 
   func testPreservesEverySpecialSymbolBoundary() async {
     let symbols = [
-      "~", "`", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_",
-      "=", "+", "[", "{", "]", "}", "\\", "|", ";", ":", "'", "\"", ",", "<",
-      ".", ">", "/", "?", "§", "±", "¥",
+      "~", "`", "!", "#", "$", "%", "^", "&", "*", "(", ")", "=", "+", "[", "{",
+      "]", "}", "|", ";", ":", "'", "\"", ",", "<", ">", "?", "§", "±", "¥",
+      "©", "™", "€", "√", "∞", "•", "…",
     ]
 
     for symbol in symbols {
@@ -110,6 +110,36 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
         return XCTFail("Expected \(symbol) to be preserved, got \(result)")
       }
       XCTAssertEqual(rewriter.document, "한글로\(symbol) ")
+    }
+  }
+
+  func testAddressPathAndIdentifierBoundariesFailClosedEvenForProposal() async {
+    for symbol in ["@", "/", "\\", ".", "_", "-"] {
+      let original = "gksrmffh\(symbol)"
+      let rewriter = FakeTextRewriter(
+        document: original,
+        caret: original.utf16.count,
+        identity: identity
+      )
+      let sources = FakeInputSources(currentLanguage: .english)
+      let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+      let result = await coordinator.perform(
+        proposal: CorrectionProposal(
+          original: "gksrmffh",
+          replacement: "한글로",
+          targetLanguage: .korean,
+          confidence: 1,
+          usedExplicitRule: true
+        ),
+        boundary: .punctuation,
+        expectedFocus: identity
+      )
+
+      XCTAssertEqual(result, .cancelled(.unsafeBoundary), symbol)
+      XCTAssertEqual(rewriter.document, original, symbol)
+      XCTAssertEqual(rewriter.replaceCount, 0, symbol)
+      XCTAssertTrue(sources.selectedLanguages.isEmpty, symbol)
     }
   }
 

@@ -1,3 +1,4 @@
+/// Volatile, bounded intent memory. Callers must reset it when focus or protection context changes.
 public struct RepeatedInputGuard: Sendable {
   public let maximumSuppressedWordCount: Int
 

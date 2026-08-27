@@ -25,7 +25,7 @@
 ## Mandatory controls
 
 1. 런타임 네트워크 기능과 텔레메트리를 포함하지 않습니다.
-2. 원시 이벤트와 현재 단어는 메모리에만 두고 최소 수명과 최대 길이를 적용합니다.
+2. 원시 이벤트와 현재 단어는 메모리에만 두고 최소 수명과 최대 길이를 적용합니다. 반복 교정 거부 의도는 현재 포커스에 한해 최대 32개 토큰 시퀀스만 유지합니다.
 3. Secure Keyboard Entry 또는 secure field를 감지하면 버퍼를 즉시 폐기합니다.
 4. 포커스·PID·selection을 교정 직전에 재검증합니다.
 5. 자동 교정은 위험 패턴과 앱에서 fail closed 합니다.
@@ -40,6 +40,7 @@
 | Data | Memory | Disk | Network |
 |---|---:|---:|---:|
 | Current physical key token buffer | Yes, bounded | Never | Never |
+| Repeated-intent physical token sequences | Yes, max 32 in current focus | Never | Never |
 | Focused text/current word | Transient when required | Never | Never |
 | App exclusion bundle IDs | Yes | Yes | Never |
 | Always/Never word pairs | Yes | Yes, user-controlled | Never |
