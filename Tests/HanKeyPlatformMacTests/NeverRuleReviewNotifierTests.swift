@@ -10,7 +10,8 @@ final class NeverRuleReviewNotifierTests: XCTestCase {
 
     XCTAssertEqual(content.categoryIdentifier, NeverRuleReviewNotifier.categoryIdentifier)
     XCTAssertEqual(content.userInfo.count, 1)
-    XCTAssertEqual(content.userInfo[NeverRuleReviewNotifier.ruleIDKey] as? String, ruleID.uuidString)
+    XCTAssertEqual(
+      content.userInfo[NeverRuleReviewNotifier.ruleIDKey] as? String, ruleID.uuidString)
     XCTAssertFalse(rendered.contains("ㅣㄷ퍄ㅐㄴㅁ"))
     XCTAssertFalse(rendered.contains("leviosa"))
   }

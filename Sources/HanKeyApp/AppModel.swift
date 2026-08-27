@@ -868,11 +868,13 @@ final class AppModel {
 
   private func rememberAutomaticallyExcludedPair(original: String, replacement: String) {
     do {
-      guard let entry = try learningStore?.upsert(
-        original: original,
-        replacement: replacement,
-        behavior: .never
-      ) else { return }
+      guard
+        let entry = try learningStore?.upsert(
+          original: original,
+          replacement: replacement,
+          behavior: .never
+        )
+      else { return }
       refreshLearningRules(message: "삭제 후 다시 입력한 단어를 변환 제외에 추가했습니다.")
       neverRuleReviewNotifier?.notify(ruleID: entry.id)
     } catch {
