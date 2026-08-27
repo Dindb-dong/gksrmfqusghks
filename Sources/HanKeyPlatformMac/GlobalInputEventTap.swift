@@ -136,11 +136,23 @@ enum KeyEventInterpreter {
     CGKeyCode(kVK_ANSI_Y): "y", CGKeyCode(kVK_ANSI_Z): "z",
   ]
 
-  private static let punctuation: Set<CGKeyCode> = [
+  private static let specialSymbolKeys: Set<CGKeyCode> = [
     CGKeyCode(kVK_ANSI_Grave), CGKeyCode(kVK_ANSI_Minus), CGKeyCode(kVK_ANSI_Equal),
     CGKeyCode(kVK_ANSI_LeftBracket), CGKeyCode(kVK_ANSI_RightBracket),
     CGKeyCode(kVK_ANSI_Backslash), CGKeyCode(kVK_ANSI_Semicolon), CGKeyCode(kVK_ANSI_Quote),
     CGKeyCode(kVK_ANSI_Comma), CGKeyCode(kVK_ANSI_Period), CGKeyCode(kVK_ANSI_Slash),
+    CGKeyCode(kVK_ANSI_KeypadDecimal), CGKeyCode(kVK_ANSI_KeypadMultiply),
+    CGKeyCode(kVK_ANSI_KeypadPlus), CGKeyCode(kVK_ANSI_KeypadDivide),
+    CGKeyCode(kVK_ANSI_KeypadMinus), CGKeyCode(kVK_ANSI_KeypadEquals),
+    CGKeyCode(kVK_ISO_Section), CGKeyCode(kVK_JIS_Yen), CGKeyCode(kVK_JIS_Underscore),
+    CGKeyCode(kVK_JIS_KeypadComma),
+  ]
+
+  private static let shiftedNumberSymbolKeys: Set<CGKeyCode> = [
+    CGKeyCode(kVK_ANSI_0), CGKeyCode(kVK_ANSI_1), CGKeyCode(kVK_ANSI_2),
+    CGKeyCode(kVK_ANSI_3), CGKeyCode(kVK_ANSI_4), CGKeyCode(kVK_ANSI_5),
+    CGKeyCode(kVK_ANSI_6), CGKeyCode(kVK_ANSI_7), CGKeyCode(kVK_ANSI_8),
+    CGKeyCode(kVK_ANSI_9),
   ]
 
   private static let navigation: Set<CGKeyCode> = [
@@ -173,7 +185,9 @@ enum KeyEventInterpreter {
     case kVK_Delete:
       return .deleteBackward
     default:
-      if punctuation.contains(keyCode) {
+      if specialSymbolKeys.contains(keyCode)
+        || (flags.contains(.maskShift) && shiftedNumberSymbolKeys.contains(keyCode))
+      {
         return .boundary(.punctuation)
       }
       if navigation.contains(keyCode) {

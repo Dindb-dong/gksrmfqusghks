@@ -83,6 +83,36 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(rewriter.document, "한글로?! ")
   }
 
+  func testPreservesEverySpecialSymbolBoundary() async {
+    let symbols = [
+      "~", "`", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_",
+      "=", "+", "[", "{", "]", "}", "\\", "|", ";", ":", "'", "\"", ",", "<",
+      ".", ">", "/", "?", "§", "±", "¥",
+    ]
+
+    for symbol in symbols {
+      let original = "gksrmffh\(symbol) "
+      let rewriter = FakeTextRewriter(
+        document: original,
+        caret: original.utf16.count,
+        identity: identity
+      )
+      let sources = FakeInputSources(currentLanguage: .english)
+      let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+      let result = await coordinator.perform(
+        proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+        boundary: .punctuation,
+        expectedFocus: identity
+      )
+
+      guard case .corrected = result else {
+        return XCTFail("Expected \(symbol) to be preserved, got \(result)")
+      }
+      XCTAssertEqual(rewriter.document, "한글로\(symbol) ")
+    }
+  }
+
   func testPreservesRapidRepeatedSpaces() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh  ", caret: 10, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)

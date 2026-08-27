@@ -12,6 +12,7 @@ public final class CorrectionTransactionCoordinator {
   private let delay: Delay
   private let verificationAttempts: Int
   private var isBusy = false
+  private static let specialBoundaryCharacters = CharacterSet.punctuationCharacters.union(.symbols)
 
   public init(
     rewriter: any FocusedTextRewriting = FocusedTextRewriter(),
@@ -193,12 +194,12 @@ public final class CorrectionTransactionCoordinator {
     case .punctuation:
       guard
         let firstScalar = suffix.unicodeScalars.first,
-        CharacterSet.punctuationCharacters.contains(firstScalar)
+        Self.specialBoundaryCharacters.contains(firstScalar)
       else {
         return nil
       }
       return suffix.unicodeScalars.dropFirst().allSatisfy {
-        CharacterSet.punctuationCharacters.contains($0)
+        Self.specialBoundaryCharacters.contains($0)
           || CharacterSet.whitespacesAndNewlines.contains($0)
       } ? suffix : nil
     }
