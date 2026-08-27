@@ -59,36 +59,53 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     var cfRange = CFRange(location: range.location, length: range.length)
     guard
       let rangeValue = AXValueCreate(.cfRange, &cfRange),
-      AXUIElementSetAttributeValue(
-        element,
-        kAXSelectedTextRangeAttribute as CFString,
-        rangeValue
-      ) == .success,
-      let source = CGEventSource(stateID: .combinedSessionState),
-      let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-      let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+      let source = CGEventSource(stateID: .combinedSessionState)
     else {
       return false
     }
 
-    let utf16 = Array(text.utf16)
-    utf16.withUnsafeBufferPointer { buffer in
-      guard let baseAddress = buffer.baseAddress else {
-        return
+    let segments = UnicodeEventText.segments(text)
+    let events = segments.compactMap { segment -> (CGEvent, CGEvent)? in
+      guard
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+      else {
+        return nil
       }
-      keyDown.keyboardSetUnicodeString(
-        stringLength: buffer.count,
-        unicodeString: baseAddress
-      )
-      keyUp.keyboardSetUnicodeString(
-        stringLength: buffer.count,
-        unicodeString: baseAddress
-      )
+
+      let utf16 = Array(segment.utf16)
+      utf16.withUnsafeBufferPointer { buffer in
+        guard let baseAddress = buffer.baseAddress else { return }
+        keyDown.keyboardSetUnicodeString(
+          stringLength: buffer.count,
+          unicodeString: baseAddress
+        )
+        keyUp.keyboardSetUnicodeString(
+          stringLength: buffer.count,
+          unicodeString: baseAddress
+        )
+      }
+      HanKeySyntheticEvent.mark(keyDown)
+      HanKeySyntheticEvent.mark(keyUp)
+      return (keyDown, keyUp)
     }
-    HanKeySyntheticEvent.mark(keyDown)
-    HanKeySyntheticEvent.mark(keyUp)
-    keyDown.postToPid(snapshot.identity.processID)
-    keyUp.postToPid(snapshot.identity.processID)
+    guard !events.isEmpty, events.count == segments.count else {
+      return false
+    }
+    guard
+      AXUIElementSetAttributeValue(
+        element,
+        kAXSelectedTextRangeAttribute as CFString,
+        rangeValue
+      ) == .success
+    else {
+      return false
+    }
+
+    for (keyDown, keyUp) in events {
+      keyDown.postToPid(snapshot.identity.processID)
+      keyUp.postToPid(snapshot.identity.processID)
+    }
     return true
   }
 
@@ -143,5 +160,11 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
       return nil
     }
     return TextUTF16Range(location: range.location, length: range.length)
+  }
+}
+
+enum UnicodeEventText {
+  static func segments(_ text: String) -> [String] {
+    text.map(String.init)
   }
 }

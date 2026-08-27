@@ -98,7 +98,8 @@ public final class CorrectionTransactionCoordinator {
       await rollbackIfPresent(
         identity: expectedFocus,
         originalWithBoundary: observedText,
-        replacementWithBoundary: replacementWithBoundary
+        replacementWithBoundary: replacementWithBoundary,
+        replacedRange: replacedRange
       )
       return .cancelled(.replacementUnverified)
     }
@@ -142,21 +143,28 @@ public final class CorrectionTransactionCoordinator {
   private func rollbackIfPresent(
     identity: FocusedElementIdentity,
     originalWithBoundary: String,
-    replacementWithBoundary: String
+    replacementWithBoundary: String,
+    replacedRange: TextUTF16Range
   ) async {
     guard
       let snapshot = rewriter.currentSnapshot(),
       snapshot.identity == identity,
       snapshot.selection.length == 0,
-      snapshot.selection.location >= replacementWithBoundary.utf16.count
+      snapshot.selection.location > replacedRange.location,
+      snapshot.selection.location
+        <= replacedRange.location + replacementWithBoundary.utf16.count
     else {
       return
     }
     let range = TextUTF16Range(
-      location: snapshot.selection.location - replacementWithBoundary.utf16.count,
-      length: replacementWithBoundary.utf16.count
+      location: replacedRange.location,
+      length: snapshot.selection.location - replacedRange.location
     )
-    guard rewriter.text(in: range, matching: snapshot) == replacementWithBoundary else {
+    guard
+      let currentText = rewriter.text(in: range, matching: snapshot),
+      !currentText.isEmpty,
+      replacementWithBoundary.contains(currentText)
+    else {
       return
     }
     _ = rewriter.replace(range: range, with: originalWithBoundary, matching: snapshot)
@@ -174,16 +182,22 @@ public final class CorrectionTransactionCoordinator {
     let suffix = String(observedText.dropFirst(original.count))
     switch boundary {
     case .space:
-      return suffix == " " ? suffix : nil
+      return suffix.first == " " && suffix.allSatisfy(\.isWhitespace) ? suffix : nil
     case .returnKey:
       return suffix.isEmpty || suffix == "\n" || suffix == "\r" ? suffix : nil
     case .tab:
       return suffix.isEmpty || suffix == "\t" ? suffix : nil
     case .punctuation:
-      return suffix.utf16.count == 1
-        && suffix.unicodeScalars.allSatisfy {
-          CharacterSet.punctuationCharacters.contains($0)
-        } ? suffix : nil
+      guard
+        let firstScalar = suffix.unicodeScalars.first,
+        CharacterSet.punctuationCharacters.contains(firstScalar)
+      else {
+        return nil
+      }
+      return suffix.unicodeScalars.dropFirst().allSatisfy {
+        CharacterSet.punctuationCharacters.contains($0)
+          || CharacterSet.whitespacesAndNewlines.contains($0)
+      } ? suffix : nil
     }
   }
 
@@ -192,7 +206,13 @@ public final class CorrectionTransactionCoordinator {
     boundary: WordBoundary,
     snapshot: FocusedTextSnapshot
   ) -> (range: TextUTF16Range, text: String, boundary: String)? {
-    let boundaryLengths = boundary == .returnKey || boundary == .tab ? [1, 0] : [1]
+    let boundaryLengths: [Int]
+    switch boundary {
+    case .space, .punctuation:
+      boundaryLengths = Array((1...4).reversed())
+    case .returnKey, .tab:
+      boundaryLengths = [1, 0]
+    }
     for boundaryLength in boundaryLengths {
       let length = original.utf16.count + boundaryLength
       guard snapshot.selection.location >= length else {

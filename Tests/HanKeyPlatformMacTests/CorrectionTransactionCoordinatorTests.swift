@@ -47,6 +47,76 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(rewriter.document, "한글로,")
   }
 
+  func testPreservesSpaceTypedImmediatelyAfterPunctuation() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh? ", caret: 10, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .punctuation,
+      expectedFocus: identity
+    )
+
+    guard case .corrected(let record) = result else {
+      return XCTFail("Expected a committed correction, got \(result)")
+    }
+    XCTAssertEqual(rewriter.document, "한글로? ")
+    XCTAssertEqual(record.originalWithBoundary, "gksrmffh? ")
+    XCTAssertEqual(record.replacementWithBoundary, "한글로? ")
+  }
+
+  func testPreservesRapidPunctuationClusterAndTrailingSpace() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh?! ", caret: 11, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .punctuation,
+      expectedFocus: identity
+    )
+
+    guard case .corrected = result else {
+      return XCTFail("Expected a committed correction, got \(result)")
+    }
+    XCTAssertEqual(rewriter.document, "한글로?! ")
+  }
+
+  func testPreservesRapidRepeatedSpaces() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh  ", caret: 10, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    guard case .corrected = result else {
+      return XCTFail("Expected a committed correction, got \(result)")
+    }
+    XCTAssertEqual(rewriter.document, "한글로  ")
+  }
+
+  func testPrintableTextAfterPunctuationFailsClosed() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh? a", caret: 11, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .punctuation,
+      expectedFocus: identity
+    )
+
+    XCTAssertEqual(result, .cancelled(.textMismatch))
+    XCTAssertEqual(rewriter.document, "gksrmffh? a")
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   func testSingleLineReturnCanCommitWithoutAnInsertedBoundaryCharacter() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh", caret: 8, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)
@@ -164,6 +234,24 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
+  func testPartiallyInsertedReplacementRollsBackFromOriginalRange() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    rewriter.firstReplacementOverride = " "
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(rewriter.document, "gksrmffh ")
+    XCTAssertEqual(rewriter.replaceCount, 2)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   private func makeCoordinator(
     rewriter: FakeTextRewriter,
     sources: FakeInputSources
@@ -200,6 +288,7 @@ private final class FakeTextRewriter: FocusedTextRewriting {
   private(set) var readCount = 0
   private(set) var replaceCount = 0
   var verificationFailuresRemaining = 0
+  var firstReplacementOverride: String?
   private var replacementPerformed = false
 
   init(
@@ -255,9 +344,13 @@ private final class FakeTextRewriter: FocusedTextRewriting {
     guard range.location >= 0, range.upperBound <= value.length else {
       return false
     }
-    value.replaceCharacters(in: NSRange(location: range.location, length: range.length), with: text)
+    let replacement = replaceCount == 1 ? firstReplacementOverride ?? text : text
+    value.replaceCharacters(
+      in: NSRange(location: range.location, length: range.length),
+      with: replacement
+    )
     document = value as String
-    selection = TextUTF16Range(location: range.location + text.utf16.count, length: 0)
+    selection = TextUTF16Range(location: range.location + replacement.utf16.count, length: 0)
     replacementPerformed = true
     return true
   }
