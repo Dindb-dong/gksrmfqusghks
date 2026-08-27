@@ -146,8 +146,11 @@ struct OnboardingView: View {
         title: "입력 모니터링",
         explanation: "어느 입력 소스에서 어떤 물리 키 위치가 눌렸는지 판별합니다. 문장 전체를 읽지 않습니다.",
         isGranted: model.permissions.canMonitorInput,
+        guidance: model.inputMonitoringGuidance,
         request: model.requestInputMonitoring,
-        openSettings: model.openInputMonitoringSettings
+        openSettings: model.openInputMonitoringSettings,
+        revealApplication: model.revealCurrentApplication,
+        relaunchApplication: model.relaunchApplication
       )
 
       Divider()
@@ -156,8 +159,11 @@ struct OnboardingView: View {
         title: "손쉬운 사용",
         explanation: "교정 직전 같은 필드와 커서인지 확인하고, 검증된 단어 범위만 바꿉니다.",
         isGranted: model.permissions.isAccessibilityTrusted,
+        guidance: model.accessibilityGuidance,
         request: model.requestAccessibility,
-        openSettings: model.openAccessibilitySettings
+        openSettings: model.openAccessibilitySettings,
+        revealApplication: model.revealCurrentApplication,
+        relaunchApplication: model.relaunchApplication
       )
 
       HStack {

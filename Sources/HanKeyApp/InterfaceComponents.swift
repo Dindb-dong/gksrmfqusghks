@@ -28,8 +28,11 @@ struct PermissionRow: View {
   let title: String
   let explanation: String
   let isGranted: Bool
+  let guidance: String
   let request: () -> Void
   let openSettings: () -> Void
+  let revealApplication: () -> Void
+  let relaunchApplication: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -50,11 +53,24 @@ struct PermissionRow: View {
         .foregroundStyle(.secondary)
 
       if !isGranted {
-        HStack {
+        HStack(spacing: 8) {
           Button("권한 요청", action: request)
           Button("시스템 설정 열기", action: openSettings)
         }
         .controlSize(.small)
+
+        if !guidance.isEmpty {
+          Label(guidance, systemImage: "arrow.triangle.2.circlepath")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          HStack(spacing: 8) {
+            Button("현재 앱 위치 보기", action: revealApplication)
+            Button("한글변환 재실행", action: relaunchApplication)
+          }
+          .controlSize(.small)
+        }
       }
     }
     .accessibilityElement(children: .contain)

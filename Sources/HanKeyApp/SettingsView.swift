@@ -108,15 +108,21 @@ struct SettingsView: View {
         title: "입력 모니터링",
         explanation: "물리 키 위치를 읽어 현재 단어만 메모리에서 판별합니다.",
         isGranted: model.permissions.canMonitorInput,
+        guidance: model.inputMonitoringGuidance,
         request: model.requestInputMonitoring,
-        openSettings: model.openInputMonitoringSettings
+        openSettings: model.openInputMonitoringSettings,
+        revealApplication: model.revealCurrentApplication,
+        relaunchApplication: model.relaunchApplication
       )
       PermissionRow(
         title: "손쉬운 사용",
         explanation: "교정 직전 포커스와 범위를 확인하고 해당 단어만 바꿉니다.",
         isGranted: model.permissions.isAccessibilityTrusted,
+        guidance: model.accessibilityGuidance,
         request: model.requestAccessibility,
-        openSettings: model.openAccessibilitySettings
+        openSettings: model.openAccessibilitySettings,
+        revealApplication: model.revealCurrentApplication,
+        relaunchApplication: model.relaunchApplication
       )
 
       Button("권한 상태 새로고침") {

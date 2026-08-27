@@ -94,6 +94,8 @@ final class AppModel {
   private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .notRegistered
   private(set) var launchAtLoginMessage = ""
   private(set) var isUpdatingLaunchAtLogin = false
+  private(set) var inputMonitoringGuidance = ""
+  private(set) var accessibilityGuidance = ""
   @ObservationIgnored private var observationRuntime: InputObservationRuntime?
   @ObservationIgnored private var inputSourceController: InputSourceController?
   @ObservationIgnored private var transactionCoordinator: CorrectionTransactionCoordinator?
@@ -186,6 +188,12 @@ final class AppModel {
 
   func refreshPermissions() {
     permissions = PlatformCapabilities.currentPermissionSnapshot()
+    if permissions.canMonitorInput {
+      inputMonitoringGuidance = ""
+    }
+    if permissions.isAccessibilityTrusted {
+      accessibilityGuidance = ""
+    }
     if isCorrectionEnabled, permissions.isReady,
       observationState == .stopped || observationState == .permissionRequired
     {
@@ -247,13 +255,21 @@ final class AppModel {
   }
 
   func requestInputMonitoring() {
-    PermissionController.requestInputMonitoring()
+    _ = PermissionController.requestInputMonitoring()
     refreshPermissions()
+    guard !permissions.canMonitorInput else { return }
+    inputMonitoringGuidance =
+      "요청 창이 나타나지 않으면 목록의 +를 눌러 현재 한글변환 앱을 직접 추가하세요."
+    openInputMonitoringSettings()
   }
 
   func requestAccessibility() {
-    PermissionController.requestAccessibility()
+    _ = PermissionController.requestAccessibility()
     refreshPermissions()
+    guard !permissions.isAccessibilityTrusted else { return }
+    accessibilityGuidance =
+      "스위치가 켜져 있는데도 ‘필요함’이면 예전 한글변환 항목을 -로 제거한 뒤 현재 앱을 +로 다시 추가하세요."
+    openAccessibilitySettings()
   }
 
   func openInputMonitoringSettings() {
@@ -262,6 +278,28 @@ final class AppModel {
 
   func openAccessibilitySettings() {
     openSystemSettings(anchor: "Privacy_Accessibility")
+  }
+
+  func revealCurrentApplication() {
+    NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+  }
+
+  func relaunchApplication() {
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.activates = true
+    configuration.createsNewApplicationInstance = true
+    NSWorkspace.shared.openApplication(
+      at: Bundle.main.bundleURL,
+      configuration: configuration
+    ) { [weak self] _, error in
+      Task { @MainActor in
+        guard error == nil else {
+          self?.accessibilityGuidance = "앱을 다시 열지 못했습니다. 한글변환을 직접 종료한 뒤 다시 실행하세요."
+          return
+        }
+        NSApp.terminate(nil)
+      }
+    }
   }
 
   func convertSelectionOrLastWord() {

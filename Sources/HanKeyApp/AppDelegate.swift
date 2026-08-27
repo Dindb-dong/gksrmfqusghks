@@ -22,6 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     showInitialOnboarding()
   }
 
+  func applicationDidBecomeActive(_ notification: Notification) {
+    AppModel.shared.refreshPermissions()
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(500))
+      AppModel.shared.refreshPermissions()
+    }
+  }
+
   private func showInitialOnboarding() {
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
