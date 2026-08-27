@@ -195,9 +195,10 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
       expectedEventSequence: 9
     )
 
-    guard case .corrected = result else {
+    guard case .corrected(let record) = result else {
       return XCTFail("Expected a stable opaque cmux caret to correct, got \(result)")
     }
+    XCTAssertFalse(record.supportsDeletionTracking)
     XCTAssertEqual(
       writer.rewrites,
       [.init(count: 2, replacement: "what", boundaryText: " ", processID: 42)]
@@ -413,7 +414,7 @@ final class TerminalCorrectionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
-  func testEveryNonSpaceBoundaryFailsClosedBeforeMutation() async {
+  func testEveryUnsupportedTerminalBoundaryFailsClosedBeforeMutation() async {
     for boundary in [WordBoundary.returnKey, .tab, .punctuation] {
       let writer = FakeTerminalWriter()
       let sources = FakeTerminalInputSources(language: .english)
