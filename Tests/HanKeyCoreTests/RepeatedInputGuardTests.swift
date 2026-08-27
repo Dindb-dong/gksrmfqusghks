@@ -3,22 +3,30 @@ import XCTest
 @testable import HanKeyCore
 
 final class RepeatedInputGuardTests: XCTestCase {
-  func testImmediateRepeatBecomesSessionSuppressed() throws {
+  func testImmediateRepeatIsNotSuppressedWithoutConfirmedDeletion() throws {
     let word = try bufferedWord("skdltm")
     var guardrail = RepeatedInputGuard()
 
-    guardrail.recordCorrection(for: word)
+    XCTAssertFalse(guardrail.shouldSuppressCorrection(for: word))
+    XCTAssertFalse(guardrail.shouldSuppressCorrection(for: word))
+  }
+
+  func testConfirmedDeletionThenSameInputBecomesSessionSuppressed() throws {
+    let word = try bufferedWord("skdltm")
+    var guardrail = RepeatedInputGuard()
+
+    guardrail.armSuppressionAfterDeletion(for: word)
 
     XCTAssertTrue(guardrail.shouldSuppressCorrection(for: word))
     XCTAssertTrue(guardrail.shouldSuppressCorrection(for: word))
   }
 
-  func testDifferentNextWordConsumesPendingComparison() throws {
+  func testDifferentNextWordConsumesDeletionConfirmedComparison() throws {
     let corrected = try bufferedWord("skdltm")
     let different = try bufferedWord("gksrmf")
     var guardrail = RepeatedInputGuard()
 
-    guardrail.recordCorrection(for: corrected)
+    guardrail.armSuppressionAfterDeletion(for: corrected)
 
     XCTAssertFalse(guardrail.shouldSuppressCorrection(for: different))
     XCTAssertFalse(guardrail.shouldSuppressCorrection(for: corrected))
@@ -29,7 +37,7 @@ final class RepeatedInputGuardTests: XCTestCase {
     let shifted = try bufferedWord("Skdltm")
     var guardrail = RepeatedInputGuard()
 
-    guardrail.recordCorrection(for: lowercase)
+    guardrail.armSuppressionAfterDeletion(for: lowercase)
 
     XCTAssertFalse(guardrail.shouldSuppressCorrection(for: shifted))
   }
@@ -39,9 +47,9 @@ final class RepeatedInputGuardTests: XCTestCase {
     let second = try bufferedWord("gksrmf")
     var guardrail = RepeatedInputGuard(maximumSuppressedWordCount: 1)
 
-    guardrail.recordCorrection(for: first)
+    guardrail.armSuppressionAfterDeletion(for: first)
     XCTAssertTrue(guardrail.shouldSuppressCorrection(for: first))
-    guardrail.recordCorrection(for: second)
+    guardrail.armSuppressionAfterDeletion(for: second)
     XCTAssertTrue(guardrail.shouldSuppressCorrection(for: second))
 
     XCTAssertFalse(guardrail.shouldSuppressCorrection(for: first))
@@ -51,10 +59,20 @@ final class RepeatedInputGuardTests: XCTestCase {
   func testResetClearsPendingAndSuppressedWords() throws {
     let word = try bufferedWord("skdltm")
     var guardrail = RepeatedInputGuard()
-    guardrail.recordCorrection(for: word)
+    guardrail.armSuppressionAfterDeletion(for: word)
     XCTAssertTrue(guardrail.shouldSuppressCorrection(for: word))
 
     guardrail.reset()
+
+    XCTAssertFalse(guardrail.shouldSuppressCorrection(for: word))
+  }
+
+  func testExtraDeletionCancelsPendingComparison() throws {
+    let word = try bufferedWord("skdltm")
+    var guardrail = RepeatedInputGuard()
+    guardrail.armSuppressionAfterDeletion(for: word)
+
+    guardrail.cancelPendingComparison()
 
     XCTAssertFalse(guardrail.shouldSuppressCorrection(for: word))
   }

@@ -2,7 +2,7 @@
 public struct RepeatedInputGuard: Sendable {
   public let maximumSuppressedWordCount: Int
 
-  private var pendingCorrectedTokens: [PhysicalKeyToken]?
+  private var pendingDeletedCorrectionTokens: [PhysicalKeyToken]?
   private var suppressedTokenSequences: [[PhysicalKeyToken]] = []
 
   public init(maximumSuppressedWordCount: Int = 32) {
@@ -11,16 +11,16 @@ public struct RepeatedInputGuard: Sendable {
     suppressedTokenSequences.reserveCapacity(maximumSuppressedWordCount)
   }
 
-  public mutating func recordCorrection(for word: BufferedWord) {
-    pendingCorrectedTokens = word.tokens
+  public mutating func armSuppressionAfterDeletion(for word: BufferedWord) {
+    pendingDeletedCorrectionTokens = word.tokens
   }
 
   public mutating func shouldSuppressCorrection(for word: BufferedWord) -> Bool {
     let tokens = word.tokens
 
-    if let pendingCorrectedTokens {
-      self.pendingCorrectedTokens = nil
-      if pendingCorrectedTokens == tokens {
+    if let pendingDeletedCorrectionTokens {
+      self.pendingDeletedCorrectionTokens = nil
+      if pendingDeletedCorrectionTokens == tokens {
         rememberSuppressed(tokens)
         return true
       }
@@ -29,8 +29,12 @@ public struct RepeatedInputGuard: Sendable {
     return suppressedTokenSequences.contains(tokens)
   }
 
+  public mutating func cancelPendingComparison() {
+    pendingDeletedCorrectionTokens = nil
+  }
+
   public mutating func reset() {
-    pendingCorrectedTokens = nil
+    pendingDeletedCorrectionTokens = nil
     suppressedTokenSequences.removeAll(keepingCapacity: true)
   }
 

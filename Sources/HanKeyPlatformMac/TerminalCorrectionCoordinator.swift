@@ -16,12 +16,29 @@ public enum TerminalCorrectionFailure: Equatable, Sendable {
   case secureInput
   case applicationExcluded
   case rewriteRejected
-  case sourceSwitchFailed
+  case rewriteUnverified
+  case sourceSwitchFailed(TerminalCorrectionRecord)
 }
 
 public enum TerminalCorrectionResult: Equatable, Sendable {
-  case corrected
+  case corrected(TerminalCorrectionRecord)
   case cancelled(TerminalCorrectionFailure)
+}
+
+public struct TerminalCorrectionRecord: Equatable, Sendable {
+  public let focusIdentity: FocusedElementIdentity
+  public let correctionStart: Int
+  public let correctedCaretLocation: Int
+
+  public init(
+    focusIdentity: FocusedElementIdentity,
+    correctionStart: Int,
+    correctedCaretLocation: Int
+  ) {
+    self.focusIdentity = focusIdentity
+    self.correctionStart = correctionStart
+    self.correctedCaretLocation = correctedCaretLocation
+  }
 }
 
 @MainActor
@@ -106,6 +123,8 @@ public final class TerminalCorrectionCoordinator {
     guard expectedCaret.selection.length == 0 else {
       return .cancelled(.selectionChanged)
     }
+    let correctionStart = expectedCaret.selection.location - proposal.original.utf16.count - 1
+    guard correctionStart >= 0 else { return .cancelled(.selectionUnavailable) }
 
     await delay()
     guard currentSequence() == expectedEventSequence else {
@@ -141,10 +160,23 @@ public final class TerminalCorrectionCoordinator {
     }
 
     await delay()
-    guard inputSources.select(language: proposal.targetLanguage) != nil else {
-      return .cancelled(.sourceSwitchFailed)
+    let correctedCaretLocation = correctionStart + (proposal.replacement + " ").utf16.count
+    guard
+      let correctedCaret = currentCaret(),
+      correctedCaret.identity == expectedFocus,
+      correctedCaret.selection == TextUTF16Range(location: correctedCaretLocation, length: 0)
+    else {
+      return .cancelled(.rewriteUnverified)
     }
-    return .corrected
+    let record = TerminalCorrectionRecord(
+      focusIdentity: expectedFocus,
+      correctionStart: correctionStart,
+      correctedCaretLocation: correctedCaretLocation
+    )
+    guard inputSources.select(language: proposal.targetLanguage) != nil else {
+      return .cancelled(.sourceSwitchFailed(record))
+    }
+    return .corrected(record)
   }
 }
 

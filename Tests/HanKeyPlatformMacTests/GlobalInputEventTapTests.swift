@@ -28,7 +28,15 @@ final class GlobalInputEventTapTests: XCTestCase {
     )
     XCTAssertEqual(
       KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_Delete), flags: []),
-      .deleteBackward
+      .deleteBackward(.character)
+    )
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_Delete), flags: .maskAlternate),
+      .deleteBackward(.word)
+    )
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_Delete), flags: .maskCommand),
+      .deleteBackward(.line)
     )
     XCTAssertEqual(
       KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_LeftArrow), flags: []),
