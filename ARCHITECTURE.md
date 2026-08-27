@@ -4,7 +4,7 @@
 
 한글변환은 Swift 6.2 기반의 네이티브 macOS 메뉴 막대 앱입니다. 순수 변환·탐지 코어를 시스템 이벤트·Accessibility 계층과 분리해, 개인정보 보호 규칙과 판정 로직을 결정적으로 테스트합니다.
 
-v1은 기존 ABC와 2-Set Korean 입력 소스를 유지하는 **메뉴 막대 에이전트 방식**을 사용합니다. 커스텀 IME는 조합 제어가 더 강하지만 설치·선택 부담과 시스템 입력 소스 UX 차이가 있어 비목표로 둡니다.
+v1은 기존 ABC와 2-Set Korean 입력 소스를 유지하는 **메뉴 막대 에이전트 방식**을 사용합니다. 커스텀 IME는 조합 제어가 더 강하지만 설치·선택 부담과 시스템 입력 소스 UX 차이가 있어 비목표로 둡니다. AX 범위 교체를 제공하지 않는 터미널은 명시적 opt-in인 제한된 합성 이벤트 경로를 사용합니다.
 
 ## 2. 모듈 경계
 
@@ -16,6 +16,7 @@ HanKeyApp
      ├─ EventTap
      ├─ FocusedTextAdapter
      ├─ TextRewriter
+     ├─ TerminalEventRewriter
      └─ InputSourceController
          ↓
      HanKeyCore
@@ -44,6 +45,14 @@ HanKeyApp
 7. 고신뢰 결정이면 `CorrectionCoordinator`가 포커스와 커서를 재검증합니다.
 8. 텍스트를 교체하고 성공을 확인한 뒤 `InputSourceController`가 목표 소스를 선택합니다.
 9. 결과는 콘텐츠가 없는 상태 이벤트로 UI에 전달되고 버퍼는 폐기됩니다.
+
+### 3.1 터미널 제한 경로
+
+1. 터미널 모드가 켜져 있고 포커스 surface가 `.terminal`일 때만 단어 버퍼를 허용합니다.
+2. 결정 엔진과 강제 안전 필터는 일반 편집기와 동일하게 적용하고 Space 경계만 허용합니다.
+3. 교정 직전에 Secure Input, PID, 포커스 identity, 번들 제외, 입력 소스와 마지막 물리 이벤트 세대를 다시 검증합니다.
+4. 원문과 Space를 합성 Backspace로 제거하고 후보와 Space를 PID 대상으로 삽입합니다. 모든 합성 이벤트은 sentinel로 재관찰을 막습니다.
+5. 터미널은 선택 문자열 검증과 정확한 Undo를 보장할 수 없으므로 Enter·Tab·문장부호에서는 절대 실행하지 않고 일반 교정 기록에도 넣지 않습니다.
 
 ## 4. 상태 기계
 
