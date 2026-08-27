@@ -200,7 +200,8 @@ enum InputProtectionPolicy {
     isApplicationExcluded: Bool,
     allowsTerminalCorrection: Bool = false
   ) -> Bool {
-    let surfaceAllowed = focusedContext.surface == .standardText
+    let surfaceAllowed =
+      focusedContext.surface == .standardText
       || (allowsTerminalCorrection && focusedContext.surface == .terminal)
     return secureInput || focusedContext.state == .secure || !surfaceAllowed
       || isApplicationExcluded

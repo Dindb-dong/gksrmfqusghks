@@ -151,7 +151,8 @@ private final class FakeTerminalWriter: TerminalEventRewriting {
     replacement: String,
     processID: Int32
   ) -> Bool {
-    rewrites.append(.init(count: originalCharacterCount, replacement: replacement, processID: processID))
+    rewrites.append(
+      .init(count: originalCharacterCount, replacement: replacement, processID: processID))
     return true
   }
 }

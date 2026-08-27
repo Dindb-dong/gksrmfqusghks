@@ -164,9 +164,11 @@ struct SettingsView: View {
           set: { model.setTerminalCorrectionEnabled($0) }
         )
       )
-      Text("cmux·Terminal·iTerm2 등에서 Space로 끝난 고신뢰 단어만 교정합니다. Enter, Tab, 문장부호, 경로·주소·옵션은 바꾸지 않습니다.")
-        .font(.footnote)
-        .foregroundStyle(.secondary)
+      Text(
+        "cmux·Terminal·iTerm2 등에서 Space로 끝난 고신뢰 단어만 교정합니다. Enter, Tab, 문장부호, 경로·주소·옵션은 바꾸지 않습니다."
+      )
+      .font(.footnote)
+      .foregroundStyle(.secondary)
       Label(
         "터미널은 선택 문자열 검증이 불가능해 이 기능은 기본으로 꺼져 있습니다. 비밀번호 입력 전에는 터미널의 Secure Keyboard Entry도 켜세요.",
         systemImage: "exclamationmark.shield"
