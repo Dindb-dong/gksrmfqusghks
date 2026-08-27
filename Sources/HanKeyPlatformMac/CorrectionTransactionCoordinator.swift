@@ -99,6 +99,7 @@ public final class CorrectionTransactionCoordinator {
         identity: expectedFocus,
         originalWithBoundary: observedText,
         replacementWithBoundary: replacementWithBoundary,
+        boundaryText: boundaryText,
         replacedRange: replacedRange
       )
       return .cancelled(.replacementUnverified)
@@ -144,6 +145,7 @@ public final class CorrectionTransactionCoordinator {
     identity: FocusedElementIdentity,
     originalWithBoundary: String,
     replacementWithBoundary: String,
+    boundaryText: String,
     replacedRange: TextUTF16Range
   ) async {
     guard
@@ -163,7 +165,8 @@ public final class CorrectionTransactionCoordinator {
     guard
       let currentText = rewriter.text(in: range, matching: snapshot),
       !currentText.isEmpty,
-      replacementWithBoundary.contains(currentText)
+      replacementWithBoundary.hasPrefix(currentText)
+        || (!boundaryText.isEmpty && currentText == boundaryText)
     else {
       return
     }

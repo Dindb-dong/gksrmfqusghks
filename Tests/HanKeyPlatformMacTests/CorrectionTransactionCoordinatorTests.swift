@@ -252,6 +252,24 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
+  func testInteriorReplacementSubstringIsNotRolledBack() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    rewriter.firstReplacementOverride = "글"
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space,
+      expectedFocus: identity
+    )
+
+    XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(rewriter.document, "글")
+    XCTAssertEqual(rewriter.replaceCount, 1)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   private func makeCoordinator(
     rewriter: FakeTextRewriter,
     sources: FakeInputSources
