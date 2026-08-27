@@ -118,4 +118,38 @@ final class InputSurfaceInspectorTests: XCTestCase {
       )
     )
   }
+
+  func testTerminalRequiresExplicitModeAndRemainsProtectedWhenExcluded() {
+    let context = FocusedElementContext(
+      state: .editable,
+      identity: FocusedElementIdentity(processID: 1, elementHash: 1),
+      surface: .terminal,
+      bundleIdentifier: "com.cmuxterm.app"
+    )
+
+    XCTAssertTrue(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: false,
+        allowsTerminalCorrection: false
+      )
+    )
+    XCTAssertFalse(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: false,
+        allowsTerminalCorrection: true
+      )
+    )
+    XCTAssertTrue(
+      InputProtectionPolicy.mustProtect(
+        secureInput: false,
+        focusedContext: context,
+        isApplicationExcluded: true,
+        allowsTerminalCorrection: true
+      )
+    )
+  }
 }

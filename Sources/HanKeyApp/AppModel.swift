@@ -83,6 +83,7 @@ final class AppModel {
 
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
   private(set) var isCorrectionEnabled: Bool
+  private(set) var isTerminalCorrectionEnabled: Bool
   private(set) var observationState: InputObservationState = .stopped
   private(set) var correctionActivity: CorrectionActivity = .idle
   private(set) var learningRules: [LearningRuleEntry] = []
@@ -101,6 +102,7 @@ final class AppModel {
   @ObservationIgnored private var observationRuntime: InputObservationRuntime?
   @ObservationIgnored private var inputSourceController: InputSourceController?
   @ObservationIgnored private var transactionCoordinator: CorrectionTransactionCoordinator?
+  @ObservationIgnored private var terminalTransactionCoordinator: TerminalCorrectionCoordinator?
   @ObservationIgnored private var activeTransaction: Task<Void, Never>?
   @ObservationIgnored private var lastCorrectionRecord: CorrectionTransactionRecord?
   @ObservationIgnored private var pendingNeverRecord: CorrectionTransactionRecord?
@@ -108,6 +110,7 @@ final class AppModel {
   @ObservationIgnored private var learningStore: LocalLearningStore?
   @ObservationIgnored private var shortcutManager: GlobalShortcutManager?
   @ObservationIgnored private var automaticCorrectionPreference: AutomaticCorrectionPreference?
+  @ObservationIgnored private var terminalCorrectionPreference: TerminalCorrectionPreference?
   @ObservationIgnored private var launchAtLoginController: LaunchAtLoginController?
   @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
   @ObservationIgnored private var repeatedInputGuard = RepeatedInputGuard()
@@ -117,6 +120,9 @@ final class AppModel {
     let automaticCorrectionPreference = AutomaticCorrectionPreference()
     self.automaticCorrectionPreference = automaticCorrectionPreference
     isCorrectionEnabled = automaticCorrectionPreference.isEnabled
+    let terminalCorrectionPreference = TerminalCorrectionPreference()
+    self.terminalCorrectionPreference = terminalCorrectionPreference
+    isTerminalCorrectionEnabled = terminalCorrectionPreference.isEnabled
     let inputSourceController = InputSourceController()
     self.inputSourceController = inputSourceController
     let learningStore = LocalLearningStore()
@@ -137,12 +143,25 @@ final class AppModel {
         learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
       }
     )
-    observationRuntime = InputObservationRuntime(
+    let observationRuntime = InputObservationRuntime(
       isApplicationExcluded: { [weak learningStore] bundleIdentifier in
         learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
       },
+      allowsTerminalCorrection: { [weak terminalCorrectionPreference] in
+        terminalCorrectionPreference?.isEnabled ?? false
+      },
       handler: { [weak self] event in
         self?.handleRuntimeEvent(event)
+      }
+    )
+    self.observationRuntime = observationRuntime
+    terminalTransactionCoordinator = TerminalCorrectionCoordinator(
+      inputSources: inputSourceController,
+      currentSequence: { [weak observationRuntime] in
+        observationRuntime?.eventSequence ?? UInt64.max
+      },
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
       }
     )
     shortcutManager = GlobalShortcutManager { [weak self] action in
@@ -225,6 +244,16 @@ final class AppModel {
       automaticCorrectionPreference?.setEnabled(false)
       correctionActivity = .idle
     }
+  }
+
+  func setTerminalCorrectionEnabled(_ enabled: Bool) {
+    guard enabled != isTerminalCorrectionEnabled else { return }
+    terminalCorrectionPreference?.setEnabled(enabled)
+    isTerminalCorrectionEnabled = enabled
+    resetRepeatedInputGuard()
+    guard isCorrectionEnabled else { return }
+    observationRuntime?.stop()
+    _ = observationRuntime?.start()
   }
 
   func resumeSavedCorrectionIfPossible() {
@@ -510,15 +539,29 @@ final class AppModel {
         resetRepeatedInputGuard()
       }
       refreshPermissions()
-    case .wordCompleted(let word, let boundary, let focusIdentity):
-      evaluateAndCorrect(word: word, boundary: boundary, focusIdentity: focusIdentity)
+    case .wordCompleted(
+      let word,
+      let boundary,
+      let focusIdentity,
+      let surface,
+      let eventSequence
+    ):
+      evaluateAndCorrect(
+        word: word,
+        boundary: boundary,
+        focusIdentity: focusIdentity,
+        surface: surface,
+        eventSequence: eventSequence
+      )
     }
   }
 
   private func evaluateAndCorrect(
     word: BufferedWord,
     boundary: WordBoundary,
-    focusIdentity: FocusedElementIdentity
+    focusIdentity: FocusedElementIdentity,
+    surface: InputSurface,
+    eventSequence: UInt64
   ) {
     guard activeTransaction == nil else {
       return
@@ -556,12 +599,24 @@ final class AppModel {
       CorrectionRequest(
         token: original,
         activeLanguage: activeLanguage,
+        surface: surface == .terminal ? .standardText : surface,
         explicitRule: learningStore?
           .behavior(original: original, replacement: candidate)?.explicitRule ?? .none,
         lexiconEvidence: evidence
       )
     )
     guard case .correct(let proposal) = decision else {
+      return
+    }
+
+    if surface == .terminal {
+      performTerminalCorrection(
+        proposal: proposal,
+        word: word,
+        boundary: boundary,
+        focusIdentity: focusIdentity,
+        eventSequence: eventSequence
+      )
       return
     }
 
@@ -585,6 +640,42 @@ final class AppModel {
       case .cancelled(.sourceSwitchFailed(let record)):
         repeatedInputGuard.recordCorrection(for: word)
         lastCorrectionRecord = record
+        pendingNeverRecord = nil
+        correctionActivity = .sourceSwitchFailed
+      case .cancelled:
+        correctionActivity = .idle
+      }
+      activeTransaction = nil
+    }
+  }
+
+  private func performTerminalCorrection(
+    proposal: CorrectionProposal,
+    word: BufferedWord,
+    boundary: WordBoundary,
+    focusIdentity: FocusedElementIdentity,
+    eventSequence: UInt64
+  ) {
+    guard isTerminalCorrectionEnabled, let terminalTransactionCoordinator else { return }
+    correctionActivity = .checking
+    activeTransaction = Task { @MainActor [weak self] in
+      let result = await terminalTransactionCoordinator.perform(
+        proposal: proposal,
+        boundary: boundary,
+        expectedFocus: focusIdentity,
+        expectedEventSequence: eventSequence
+      )
+      guard let self else { return }
+      switch result {
+      case .corrected:
+        repeatedInputGuard.recordCorrection(for: word)
+        lastCorrectionRecord = nil
+        pendingNeverRecord = nil
+        correctionActivity = .corrected
+        deliverCorrectionFeedback()
+      case .cancelled(.sourceSwitchFailed):
+        repeatedInputGuard.recordCorrection(for: word)
+        lastCorrectionRecord = nil
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed
       case .cancelled:

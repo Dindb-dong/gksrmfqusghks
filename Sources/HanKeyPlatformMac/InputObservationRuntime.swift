@@ -15,7 +15,9 @@ public enum InputObservationRuntimeEvent: Equatable, Sendable {
   case wordCompleted(
     BufferedWord,
     boundary: WordBoundary,
-    focusIdentity: FocusedElementIdentity
+    focusIdentity: FocusedElementIdentity,
+    surface: InputSurface,
+    eventSequence: UInt64
   )
 }
 
@@ -23,13 +25,17 @@ public enum InputObservationRuntimeEvent: Equatable, Sendable {
 public final class InputObservationRuntime {
   public typealias Handler = @MainActor @Sendable (InputObservationRuntimeEvent) -> Void
   public typealias ExclusionProvider = @MainActor (String?) -> Bool
+  public typealias TerminalModeProvider = @MainActor () -> Bool
 
   private let handler: Handler
   private let isApplicationExcluded: ExclusionProvider
+  private let allowsTerminalCorrection: TerminalModeProvider
   private var buffer: WordBuffer
   private var state: InputObservationState = .stopped
   private var focusTracker = FocusIdentityTracker()
   private var currentFocusIdentity: FocusedElementIdentity?
+  private var currentSurface: InputSurface = .unsupported
+  public private(set) var eventSequence: UInt64 = 0
   private lazy var eventTap = GlobalInputEventTap { [weak self] observation in
     MainActor.assumeIsolated {
       self?.receive(observation)
@@ -44,10 +50,12 @@ public final class InputObservationRuntime {
   public init(
     buffer: WordBuffer = WordBuffer(),
     isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
+    allowsTerminalCorrection: @escaping TerminalModeProvider = { false },
     handler: @escaping Handler
   ) {
     self.buffer = buffer
     self.isApplicationExcluded = isApplicationExcluded
+    self.allowsTerminalCorrection = allowsTerminalCorrection
     self.handler = handler
   }
 
@@ -79,10 +87,12 @@ public final class InputObservationRuntime {
     _ = buffer.handle(.invalidate(.stopped), at: currentTimestamp())
     focusTracker.reset()
     currentFocusIdentity = nil
+    currentSurface = .unsupported
     transition(to: .stopped)
   }
 
   private func receive(_ observation: GlobalInputObservation) {
+    eventSequence &+= 1
     let timestamp: UInt64
     switch observation {
     case .tapRecovered:
@@ -106,7 +116,9 @@ public final class InputObservationRuntime {
           .wordCompleted(
             word,
             boundary: boundary,
-            focusIdentity: currentFocusIdentity
+            focusIdentity: currentFocusIdentity,
+            surface: currentSurface,
+            eventSequence: eventSequence
           )
         )
       }
@@ -136,13 +148,15 @@ public final class InputObservationRuntime {
     let mustProtect = InputProtectionPolicy.mustProtect(
       secureInput: secureInput,
       focusedContext: focusedContext,
-      isApplicationExcluded: isApplicationExcluded(focusedContext.bundleIdentifier)
+      isApplicationExcluded: isApplicationExcluded(focusedContext.bundleIdentifier),
+      allowsTerminalCorrection: allowsTerminalCorrection()
     )
 
     if mustProtect {
       _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
+      currentSurface = .unsupported
       transition(to: .protected)
       return false
     }
@@ -161,6 +175,7 @@ public final class InputObservationRuntime {
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
     }
     currentFocusIdentity = identity
+    currentSurface = focusedContext.surface
     transition(to: .observing)
     return true
   }
@@ -182,9 +197,12 @@ enum InputProtectionPolicy {
   static func mustProtect(
     secureInput: Bool,
     focusedContext: FocusedElementContext,
-    isApplicationExcluded: Bool
+    isApplicationExcluded: Bool,
+    allowsTerminalCorrection: Bool = false
   ) -> Bool {
-    secureInput || focusedContext.state == .secure || focusedContext.surface != .standardText
+    let surfaceAllowed = focusedContext.surface == .standardText
+      || (allowsTerminalCorrection && focusedContext.surface == .terminal)
+    return secureInput || focusedContext.state == .secure || !surfaceAllowed
       || isApplicationExcluded
   }
 }
