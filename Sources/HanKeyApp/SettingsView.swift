@@ -21,7 +21,7 @@ struct SettingsView: View {
   @State private var ruleReplacement = ""
   @State private var ruleBehavior: LearningRuleBehavior = .never
   @State private var confirmsLearningReset = false
-  @State private var excludedBundleIdentifier = ""
+  @State private var showsApplicationPicker = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -57,6 +57,14 @@ struct SettingsView: View {
     .frame(minWidth: 560, idealWidth: 620, maxWidth: 760, minHeight: 440, idealHeight: 500)
     .task {
       model.refreshLaunchAtLoginStatus()
+    }
+    .sheet(isPresented: $showsApplicationPicker) {
+      InstalledApplicationPicker(
+        excludedBundleIdentifiers: Set(model.excludedApplications),
+        ownBundleIdentifier: Bundle.main.bundleIdentifier
+      ) { application in
+        model.addExcludedApplication(application.bundleIdentifier)
+      }
     }
   }
 
@@ -149,15 +157,10 @@ struct SettingsView: View {
     }
 
     Section("사용자 앱 제외") {
-      TextField("Bundle ID (예: com.example.Editor)", text: $excludedBundleIdentifier)
       HStack {
-        Button("Bundle ID 추가") {
-          model.addExcludedApplication(excludedBundleIdentifier)
-          if model.learningMessage == "앱 제외를 저장했습니다." {
-            excludedBundleIdentifier = ""
-          }
+        Button("설치된 앱 선택…") {
+          showsApplicationPicker = true
         }
-        .disabled(excludedBundleIdentifier.isEmpty)
         Button("최근 사용 앱 제외") {
           model.excludeRecentlyUsedApplication()
         }
@@ -172,8 +175,7 @@ struct SettingsView: View {
       } else {
         ForEach(model.excludedApplications, id: \.self) { bundleIdentifier in
           HStack {
-            Text(bundleIdentifier)
-              .textSelection(.enabled)
+            ExcludedApplicationLabel(bundleIdentifier: bundleIdentifier)
             Spacer()
             Button(role: .destructive) {
               model.removeExcludedApplication(bundleIdentifier)
@@ -181,7 +183,7 @@ struct SettingsView: View {
               Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("\(bundleIdentifier) 앱 제외 삭제")
+            .accessibilityLabel("제외 앱 삭제")
           }
         }
       }
