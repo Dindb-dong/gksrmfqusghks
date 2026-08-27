@@ -5,6 +5,8 @@
 - Local-only ABC↔2-Set Korean physical-key conversion with complete modern Hangul round trips.
 - Fail-closed automatic detector for addresses, identifiers, code-like and high-entropy values.
 - Bounded global input observation with Secure Input, focus, app, pointer, input-source, sleep, and session invalidation.
+- Complete physical special-symbol boundary recognition with URL, query, path, and identifier continuations failing closed.
+- Focus-scoped repeated-input intent guard that preserves a user's second identical physical-key entry for the session.
 - Verified clipboard-free AX range rewrite and post-success input-source switching.
 - Privacy-first onboarding, permission recovery, menu status, accessible Light/Dark settings.
 - Manual selection/last-word conversion, strict one-step Undo, optional global shortcuts.
