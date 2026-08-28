@@ -24,6 +24,8 @@ lipo "$HANKEY_APP/Contents/MacOS/HanKeyApp" -verify_arch arm64 x86_64
 test -f "$HANKEY_APP/Contents/Resources/Assets.car"
 test -f "$HANKEY_APP/Contents/Resources/AppIcon.icns"
 test -f "$HANKEY_APP/Contents/Resources/SBOM.spdx.json"
+test -d "$HANKEY_APP/Contents/Frameworks/Sparkle.framework"
+lipo "$HANKEY_APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" -verify_arch arm64 x86_64
 unzip -tq "$HANKEY_ZIP" >/dev/null
 hdiutil verify "$HANKEY_DMG" >/dev/null
 
