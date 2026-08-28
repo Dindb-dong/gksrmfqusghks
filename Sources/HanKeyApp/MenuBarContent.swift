@@ -47,7 +47,7 @@ struct MenuBarContent: View {
 
     if !model.permissions.hasRequiredPermissions {
       Button("권한 설정 확인…") {
-        openSettings()
+        openSettingsInFront()
       }
     }
 
@@ -61,7 +61,7 @@ struct MenuBarContent: View {
     }
 
     Button("설정…") {
-      openSettings()
+      openSettingsInFront()
     }
     .keyboardShortcut(",", modifiers: .command)
 
@@ -71,5 +71,11 @@ struct MenuBarContent: View {
       NSApplication.shared.terminate(nil)
     }
     .keyboardShortcut("q", modifiers: .command)
+  }
+
+  private func openSettingsInFront() {
+    SettingsWindowPresenter.open {
+      openSettings()
+    }
   }
 }

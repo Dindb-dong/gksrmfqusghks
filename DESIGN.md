@@ -3,7 +3,7 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-08-27
+- Last refreshed: 2026-08-28
 - Primary product surfaces: 첫 실행 온보딩, 메뉴 막대 상태 메뉴, 설정, 로컬 학습 목록, 비침해 교정 알림
 - Evidence reviewed: `PRD.md`, macOS 시스템 설정과 메뉴 막대 관례, Apple 입력 모니터링·손쉬운 사용 권한 흐름, 유사 macOS 입력 도구의 공개 UX
 - Assumption: 사용자는 자동화보다 키 입력에 대한 통제와 신뢰를 먼저 확인합니다.
@@ -52,7 +52,7 @@
 ## Components
 
 - Existing components to reuse: SwiftUI `Settings`, `Form`, `Toggle`, `Picker`, `Table`, `MenuBarExtra`, 표준 권한 링크 버튼
-- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge
+- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge, AutomaticCorrectionThresholdSlider, SettingsWindowBridge
 - Variants and states: normal, paused, permission-required, secure-input, excluded, unsupported, error
 - Token/component ownership: App target이 화면을 소유하고 Core 모듈은 사용자 표시 타입을 의존하지 않습니다.
 
@@ -78,6 +78,7 @@
 - Success: 권한 준비 완료와 샘플 교정 성공을 명시
 - Disabled: 왜 비활성인지와 필요한 선행 조건을 인접 설명. 복구 가능한 시스템 상태를 단순히 비활성화하지 않음
 - Offline/slow network: 런타임 네트워크 기능이 없으므로 오프라인이 정상 상태
+- Window activation: 메뉴 막대에서 설정을 열면 현재 Space에서 설정창을 key/front로 올립니다. 다른 앱 위에 계속 머무는 floating window로 만들지는 않습니다.
 
 ## Content voice
 
@@ -95,6 +96,14 @@
 - Test/screenshot expectations: 핵심 상태별 SwiftUI preview, 접근성 식별자, 온보딩·설정 스크린샷 QA, 메뉴 막대 상태 수동 QA
 
 ## Desktop reliability flows
+
+### 설정 접근과 자동 변환 기준
+
+- 메뉴 막대의 `설정…`과 `권한 설정 확인…`은 앱을 활성화하고 기존 또는 새 설정창을 현재 Space의 최전면으로 올립니다. 창을 닫기 전까지 항상 다른 앱 위에 고정하지 않습니다.
+- 일반 설정의 `자동 변환 기준`은 50–100 사이의 정수 슬라이더로 제공합니다. 기본값은 기존 판정 마진과 동일한 75이고 권장 범위는 75–85입니다.
+- 낮은 값은 더 적극적으로, 높은 값은 더 보수적으로 일반 자동 변환을 제안합니다. 현재 값과 `적극적`/`보수적` 방향, 권장 범위를 텍스트와 VoiceOver로 함께 설명합니다.
+- 슬라이더는 일반 판정의 점수 마진만 바꿉니다. 보안 입력·주소·코드형 토큰 등 하드 안전 차단과 `변환 제외` 규칙을 우회하지 않으며, 사용자가 저장한 `항상 변환` 규칙은 슬라이더보다 우선합니다.
+- 값은 로컬 `UserDefaults`에만 저장하고, 범위를 벗어난 저장값은 가장 가까운 유효값으로 보정합니다. 입력 내용이나 점수 판정 내역은 저장하지 않습니다.
 
 ### 로그인 시 실행
 

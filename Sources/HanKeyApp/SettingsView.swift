@@ -63,6 +63,7 @@ struct SettingsView: View {
       .scrollContentBackground(.hidden)
     }
     .frame(minWidth: 760, idealWidth: 800, maxWidth: 920, minHeight: 440, idealHeight: 520)
+    .background(SettingsWindowBridge())
     .task {
       model.refreshLaunchAtLoginStatus()
     }
@@ -203,6 +204,40 @@ struct SettingsView: View {
       .disabled(!model.isCorrectionEnabled && !model.permissions.isReady)
 
       LabeledContent("최근 동작", value: model.correctionActivity.title)
+    }
+
+    Section("자동 변환 기준") {
+      LabeledContent("현재 기준") {
+        Text("\(model.automaticCorrectionThreshold) / 100")
+          .monospacedDigit()
+      }
+
+      HStack(spacing: 12) {
+        Text("적극적")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Slider(
+          value: Binding(
+            get: { Double(model.automaticCorrectionThreshold) },
+            set: { model.setAutomaticCorrectionThreshold(Int($0.rounded())) }
+          ),
+          in: 50...100,
+          step: 1
+        )
+        .accessibilityLabel("자동 변환 기준")
+        .accessibilityValue("\(model.automaticCorrectionThreshold)점")
+        .accessibilityHint("낮추면 더 자주 변환하고, 높이면 더 확실한 단어만 변환합니다.")
+        Text("보수적")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Text("낮을수록 더 자주 변환하고, 높을수록 더 확실한 단어만 변환합니다. 권장 범위는 75–85입니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+      Text("보안 입력·주소·코드 보호와 변환 제외/항상 변환 규칙은 이 기준보다 우선합니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
     }
 
     Section("시작과 피드백") {
