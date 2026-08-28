@@ -14,10 +14,11 @@ final class SoftwareUpdateController {
   init(bundle: Bundle = .main) {
     let feedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? ""
     let publicKey = bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String ?? ""
-    let isConfigured = SoftwareUpdateConfiguration(
-      feedURLString: feedURL,
-      publicEDKey: publicKey
-    ) != nil
+    let isConfigured =
+      SoftwareUpdateConfiguration(
+        feedURLString: feedURL,
+        publicEDKey: publicKey
+      ) != nil
     self.isConfigured = isConfigured
     automaticallyChecksForUpdates =
       bundle.object(forInfoDictionaryKey: "SUEnableAutomaticChecks") as? Bool ?? true
