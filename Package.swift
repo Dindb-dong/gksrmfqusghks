@@ -13,6 +13,9 @@ let package = Package(
     .library(name: "HanKeyPlatformMac", targets: ["HanKeyPlatformMac"]),
     .executable(name: "HanKeyApp", targets: ["HanKeyApp"]),
   ],
+  dependencies: [
+    .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.9.6")
+  ],
   targets: [
     .target(name: "HanKeyCore"),
     .target(
@@ -29,7 +32,11 @@ let package = Package(
     ),
     .executableTarget(
       name: "HanKeyApp",
-      dependencies: ["HanKeyCore", "HanKeyPlatformMac"]
+      dependencies: [
+        "HanKeyCore",
+        "HanKeyPlatformMac",
+        .product(name: "Sparkle", package: "Sparkle"),
+      ]
     ),
     .testTarget(
       name: "HanKeyCoreTests",

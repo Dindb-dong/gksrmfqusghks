@@ -81,6 +81,8 @@ enum CorrectionActivity: Equatable {
 final class AppModel {
   static let shared = AppModel()
 
+  let softwareUpdates = SoftwareUpdateController()
+
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
   private(set) var isCorrectionEnabled: Bool
   private(set) var automaticCorrectionThreshold: Int
@@ -248,6 +250,10 @@ final class AppModel {
     {
       _ = observationRuntime?.start()
     }
+  }
+
+  func startSoftwareUpdates() {
+    softwareUpdates.start()
   }
 
   func setCorrectionEnabled(_ enabled: Bool) {

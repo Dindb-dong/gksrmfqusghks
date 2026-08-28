@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var onboardingWindowController: NSWindowController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    AppModel.shared.startSoftwareUpdates()
     #if DEBUG
       if ProcessInfo.processInfo.arguments.contains("--dark-appearance") {
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
