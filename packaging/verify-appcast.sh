@@ -9,6 +9,7 @@ HANKEY_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString'
 HANKEY_APPCAST="${1:-$HANKEY_OUTPUT_ROOT/appcast.xml}"
 HANKEY_DMG="${2:-$HANKEY_OUTPUT_ROOT/HanKey-$HANKEY_VERSION.dmg}"
 HANKEY_SIGN_UPDATE="${SPARKLE_SIGN_UPDATE:-$HANKEY_ROOT/.build/artifacts/sparkle/Sparkle/bin/sign_update}"
+HANKEY_SPARKLE_ACCOUNT="${HANKEY_SPARKLE_KEY_ACCOUNT:-hankey}"
 
 [[ -x "$HANKEY_SIGN_UPDATE" ]] || { echo "Sparkle sign_update not found: $HANKEY_SIGN_UPDATE" >&2; exit 66; }
 [[ -f "$HANKEY_APPCAST" ]] || { echo "appcast not found: $HANKEY_APPCAST" >&2; exit 66; }
@@ -26,5 +27,5 @@ enclosure_length="$(xmllint --xpath "string(//*[local-name()='enclosure']/@lengt
 }
 [[ "$enclosure_length" == "$(stat -f %z "$HANKEY_DMG")" ]] || { echo "appcast length does not match DMG" >&2; exit 65; }
 
-"$HANKEY_SIGN_UPDATE" --verify "$HANKEY_DMG" "$signature"
+"$HANKEY_SIGN_UPDATE" --account "$HANKEY_SPARKLE_ACCOUNT" --verify "$HANKEY_DMG" "$signature"
 echo "Verified HanKey $HANKEY_VERSION Sparkle appcast."
