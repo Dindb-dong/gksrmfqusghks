@@ -132,6 +132,32 @@ final class CorrectionDecisionEngineTests: XCTestCase {
     )
   }
 
+  func testAutomaticMarginChangesOnlyOrdinaryScoredDecisions() throws {
+    let scoredRequest = request(
+      token: "ahem",
+      activeLanguage: .english,
+      candidateKnown: true
+    )
+
+    XCTAssertEqual(
+      CorrectionDecisionEngine(automaticMargin: 1.5).decide(scoredRequest),
+      .noCorrection(.insufficientMargin)
+    )
+    guard case .correct = CorrectionDecisionEngine(automaticMargin: 1).decide(scoredRequest) else {
+      return XCTFail("A lower threshold should accept the same scored candidate")
+    }
+
+    let explicitProposal = try correction(
+      for: request(
+        token: "gksrmffh",
+        activeLanguage: .english,
+        explicitRule: .always
+      ),
+      using: CorrectionDecisionEngine(automaticMargin: .infinity)
+    )
+    XCTAssertTrue(explicitProposal.usedExplicitRule)
+  }
+
   func testExplicitRulesRespectHardSafetyBoundary() throws {
     let always = try correction(
       for: request(
@@ -205,8 +231,11 @@ final class CorrectionDecisionEngineTests: XCTestCase {
     )
   }
 
-  private func correction(for request: CorrectionRequest) throws -> CorrectionProposal {
-    guard case .correct(let proposal) = engine.decide(request) else {
+  private func correction(
+    for request: CorrectionRequest,
+    using engine: CorrectionDecisionEngine? = nil
+  ) throws -> CorrectionProposal {
+    guard case .correct(let proposal) = (engine ?? self.engine).decide(request) else {
       throw UnexpectedDecision()
     }
     return proposal

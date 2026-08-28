@@ -83,6 +83,7 @@ final class AppModel {
 
   private(set) var permissions = PlatformCapabilities.currentPermissionSnapshot()
   private(set) var isCorrectionEnabled: Bool
+  private(set) var automaticCorrectionThreshold: Int
   private(set) var isTerminalCorrectionEnabled: Bool
   private(set) var observationState: InputObservationState = .stopped
   private(set) var correctionActivity: CorrectionActivity = .idle
@@ -110,6 +111,8 @@ final class AppModel {
   @ObservationIgnored private var learningStore: LocalLearningStore?
   @ObservationIgnored private var shortcutManager: GlobalShortcutManager?
   @ObservationIgnored private var automaticCorrectionPreference: AutomaticCorrectionPreference?
+  @ObservationIgnored private var automaticCorrectionThresholdPreference:
+    AutomaticCorrectionThresholdPreference?
   @ObservationIgnored private var terminalCorrectionPreference: TerminalCorrectionPreference?
   @ObservationIgnored private var launchAtLoginController: LaunchAtLoginController?
   @ObservationIgnored private var externalApplicationTracker: ExternalApplicationTracker?
@@ -127,6 +130,9 @@ final class AppModel {
     let automaticCorrectionPreference = AutomaticCorrectionPreference()
     self.automaticCorrectionPreference = automaticCorrectionPreference
     isCorrectionEnabled = automaticCorrectionPreference.isEnabled
+    let automaticCorrectionThresholdPreference = AutomaticCorrectionThresholdPreference()
+    self.automaticCorrectionThresholdPreference = automaticCorrectionThresholdPreference
+    automaticCorrectionThreshold = automaticCorrectionThresholdPreference.value
     let terminalCorrectionPreference = TerminalCorrectionPreference()
     self.terminalCorrectionPreference = terminalCorrectionPreference
     isTerminalCorrectionEnabled = terminalCorrectionPreference.isEnabled
@@ -264,6 +270,13 @@ final class AppModel {
       automaticCorrectionPreference?.setEnabled(false)
       correctionActivity = .idle
     }
+  }
+
+  func setAutomaticCorrectionThreshold(_ value: Int) {
+    let threshold = AutomaticCorrectionThreshold(value)
+    guard threshold.value != automaticCorrectionThreshold else { return }
+    automaticCorrectionThresholdPreference?.setValue(threshold.value)
+    automaticCorrectionThreshold = threshold.value
   }
 
   func setTerminalCorrectionEnabled(_ enabled: Bool) {
@@ -637,7 +650,9 @@ final class AppModel {
       candidate: candidate,
       activeLanguage: activeLanguage
     )
-    let decision = CorrectionDecisionEngine().decide(
+    let decision = CorrectionDecisionEngine(
+      automaticMargin: AutomaticCorrectionThreshold(automaticCorrectionThreshold).automaticMargin
+    ).decide(
       CorrectionRequest(
         token: original,
         activeLanguage: activeLanguage,
