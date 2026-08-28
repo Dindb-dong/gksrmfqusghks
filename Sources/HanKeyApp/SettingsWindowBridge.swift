@@ -4,26 +4,23 @@ import SwiftUI
 @MainActor
 enum SettingsWindowPresenter {
   private static weak var settingsWindow: NSWindow?
+  private static var shouldBringNextRegisteredWindowToFront = false
 
   static func register(_ window: NSWindow) {
     settingsWindow = window
+    guard shouldBringNextRegisteredWindowToFront else { return }
+    shouldBringNextRegisteredWindowToFront = false
+    bringToFront(window)
   }
 
   static func open(_ openSettings: () -> Void) {
+    shouldBringNextRegisteredWindowToFront = true
     NSApplication.shared.activate(ignoringOtherApps: true)
     openSettings()
 
-    Task { @MainActor in
-      for attempt in 0..<6 {
-        if let window = settingsWindow {
-          bringToFront(window)
-          return
-        }
-        if attempt < 5 {
-          try? await Task.sleep(for: .milliseconds(40))
-        }
-      }
-    }
+    guard let settingsWindow else { return }
+    shouldBringNextRegisteredWindowToFront = false
+    bringToFront(settingsWindow)
   }
 
   private static func bringToFront(_ window: NSWindow) {
