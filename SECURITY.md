@@ -24,7 +24,7 @@
 
 ## Mandatory controls
 
-1. 런타임 네트워크 기능과 텔레메트리를 포함하지 않습니다.
+1. 텔레메트리와 콘텐츠 네트워크 전송을 포함하지 않습니다. 런타임 네트워크는 격리된 Sparkle 업데이트 피드와 사용자가 승인한 업데이트 다운로드로만 제한합니다.
 2. 원시 이벤트와 현재 단어는 메모리에만 두고 최소 수명과 최대 길이를 적용합니다. 반복 교정 거부 의도는 현재 포커스에 한해 최대 32개 토큰 시퀀스만 유지합니다.
 3. Secure Keyboard Entry 또는 secure field를 감지하면 버퍼를 즉시 폐기합니다.
 4. 포커스·PID·selection을 교정 직전에 재검증합니다.
@@ -46,6 +46,7 @@
 | Always/Never word pairs | Yes | Yes, user-controlled | Never |
 | Permission and feature settings | Yes | Yes | Never |
 | Content-free diagnostic codes | Bounded | User opt-in export | Never |
+| Update request metadata | Never includes typed content | Sparkle preference only | Public GitHub appcast/release only |
 
 ## Secure input invariants
 
@@ -55,11 +56,12 @@
 - 비밀번호 관리자 bundle ID는 사용자 설정으로 자동 교정 허용할 수 없습니다.
 - secure field 여부를 확인할 수 없고 컨텍스트가 민감하면 무동작합니다.
 
-## Network prohibition
+## Network boundary
 
-- 앱 runtime target에서 `URLSession`, `Network`, BSD socket, WebSocket import/use를 정적 검사합니다.
+- 앱 소스에서 직접 `URLSession`, `Network`, BSD socket, WebSocket을 import/use하지 못하도록 정적 검사합니다.
 - CI 의존성·사전 다운로드는 버전과 checksum이 고정된 별도 build-time 단계이며 런타임 앱에 downloader를 넣지 않습니다.
-- 업데이트 기능은 v1 이후 별도 보안 설계 없이는 추가하지 않습니다.
+- 유일한 런타임 예외는 Sparkle 2.9.6입니다. `SoftwareUpdateController`는 입력 이벤트·현재 단어·AX 텍스트·로컬 규칙에 접근하지 않으며 공개 HTTPS 앱캐스트와 릴리스 아티팩트만 처리합니다.
+- 업데이트는 HanKey 전용 EdDSA 키, Developer ID, Apple 공증을 모두 검증합니다. 개인 EdDSA 키는 저장소나 파일로 내보내지 않고 macOS Keychain의 `hankey` 계정에만 둡니다.
 
 ## Vulnerability reports
 
@@ -68,5 +70,5 @@
 ## Unsupported security claims
 
 - “모든 비밀번호 필드를 완벽하게 식별한다”고 주장하지 않습니다.
-- 비 sandboxed Developer ID 앱의 네트워크 불가를 OS가 강제한다고 주장하지 않습니다. 대신 네트워크 코드 부재, 공개 소스, 정적·동적 검증 증거를 제공합니다.
+- 비 sandboxed Developer ID 앱의 콘텐츠 네트워크 불가를 OS가 강제한다고 주장하지 않습니다. 대신 Sparkle 외 직접 네트워크 코드 부재, 공개 소스, 정적·동적 검증 증거를 제공합니다.
 - 접근성 권한이 단순하거나 낮은 위험이라고 축소 설명하지 않습니다.

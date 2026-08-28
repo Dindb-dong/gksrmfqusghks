@@ -4,7 +4,7 @@
 
 - Status: Active
 - Last refreshed: 2026-08-28
-- Primary product surfaces: 첫 실행 온보딩, 메뉴 막대 상태 메뉴, 설정, 로컬 학습 목록, 비침해 교정 알림
+- Primary product surfaces: 첫 실행 온보딩, 메뉴 막대 상태 메뉴, 설정, 로컬 학습 목록, 비침해 교정 알림, 소프트웨어 업데이트
 - Evidence reviewed: `PRD.md`, macOS 시스템 설정과 메뉴 막대 관례, Apple 입력 모니터링·손쉬운 사용 권한 흐름, 유사 macOS 입력 도구의 공개 UX
 - Assumption: 사용자는 자동화보다 키 입력에 대한 통제와 신뢰를 먼저 확인합니다.
 
@@ -52,7 +52,7 @@
 ## Components
 
 - Existing components to reuse: SwiftUI `Settings`, `Form`, `Toggle`, `Picker`, `Table`, `MenuBarExtra`, 표준 권한 링크 버튼
-- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge, AutomaticCorrectionThresholdSlider, SettingsWindowBridge
+- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge, AutomaticCorrectionThresholdSlider, SettingsWindowBridge, SoftwareUpdateSettings
 - Variants and states: normal, paused, permission-required, secure-input, excluded, unsupported, error
 - Token/component ownership: App target이 화면을 소유하고 Core 모듈은 사용자 표시 타입을 의존하지 않습니다.
 
@@ -77,7 +77,7 @@
 - Error: 실패 원인, 영향, 복구 버튼, 안전한 현재 동작을 함께 표시
 - Success: 권한 준비 완료와 샘플 교정 성공을 명시
 - Disabled: 왜 비활성인지와 필요한 선행 조건을 인접 설명. 복구 가능한 시스템 상태를 단순히 비활성화하지 않음
-- Offline/slow network: 런타임 네트워크 기능이 없으므로 오프라인이 정상 상태
+- Offline/slow network: 입력 교정은 항상 오프라인으로 동작합니다. 업데이트 피드 확인 실패는 교정 상태와 분리하고, 다음 예약 확인 또는 수동 재시도를 안내합니다.
 - Window activation: 메뉴 막대에서 설정을 열면 현재 Space에서 설정창을 key/front로 올립니다. 다른 앱 위에 계속 머무는 floating window로 만들지는 않습니다.
 
 ## Content voice
@@ -104,6 +104,14 @@
 - 낮은 값은 더 적극적으로, 높은 값은 더 보수적으로 일반 자동 변환을 제안합니다. 현재 값과 `적극적`/`보수적` 방향, 권장 범위를 텍스트와 VoiceOver로 함께 설명합니다.
 - 슬라이더는 일반 판정의 점수 마진만 바꿉니다. 보안 입력·주소·코드형 토큰 등 하드 안전 차단과 `변환 제외` 규칙을 우회하지 않으며, 사용자가 저장한 `항상 변환` 규칙은 슬라이더보다 우선합니다.
 - 값은 로컬 `UserDefaults`에만 저장하고, 범위를 벗어난 저장값은 가장 가까운 유효값으로 보정합니다. 입력 내용이나 점수 판정 내역은 저장하지 않습니다.
+
+### 소프트웨어 업데이트
+
+- `정보` 탭에서 자동 업데이트 확인 토글, 수동 `지금 업데이트 확인`, 현재 상태를 제공합니다.
+- 자동 확인은 기본 켜짐이며 앱 시작 시 기한이 지난 확인을 한 번 수행하고, 실행 중에는 최대 24시간마다 확인합니다.
+- 업데이트 설명은 공개 GitHub Release의 HTTPS 앱캐스트만 조회하며 키 입력·교정 내용·로컬 규칙을 전송하지 않는다는 경계를 함께 표시합니다.
+- 피드 또는 네트워크 실패는 자동 교정 기능을 중단하거나 오류 상태로 오인시키지 않습니다. 사용자는 계속 오프라인으로 교정할 수 있습니다.
+- 설치 제안은 Sparkle EdDSA, Developer ID, Apple 공증 검증을 통과한 아티팩트에만 표시합니다.
 
 ### 로그인 시 실행
 

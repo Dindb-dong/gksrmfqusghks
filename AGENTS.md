@@ -3,7 +3,7 @@
 ## Product contracts
 
 - `PRD.md`, `DESIGN.md`, `ARCHITECTURE.md`, `SECURITY.md` are implementation contracts.
-- Runtime behavior is local-only: no telemetry, analytics, cloud inference, network update check, or typed-content persistence.
+- Typed-content behavior is local-only: no telemetry, analytics, cloud inference, or typed-content persistence. The only runtime network path is Sparkle fetching the public HTTPS appcast and signed release artifact; it must never receive input content or local rules.
 - Precision beats recall. Secure, ambiguous, code-like, address-like, or unsupported input must fail closed.
 - Never log raw key events, key sequences, focused/selected text, or surrounding context.
 

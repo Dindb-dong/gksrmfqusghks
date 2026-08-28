@@ -27,10 +27,10 @@
 - formatting/lint/type/build checks defined by the repository
 - detector changes: adversarial precision gate
 - event/AX changes: secure input and focus race checks
-- runtime changes: no-network and content-free logging scan
+- runtime changes: Sparkle 외 직접 네트워크 API 금지와 content-free logging scan
 
 ## Safety
 
 - 실제 비밀번호, 토큰, 주소, 대화 내용을 fixture나 issue에 넣지 않습니다.
 - 자동 교정 범위를 넓히는 변경은 recall 향상만으로 승인하지 않습니다.
-- clipboard fallback, network feature, telemetry, remote model은 별도 threat model과 명시적 제품 결정 없이 추가하지 않습니다.
+- clipboard fallback, Sparkle 외 network feature, telemetry, remote model은 별도 threat model과 명시적 제품 결정 없이 추가하지 않습니다.

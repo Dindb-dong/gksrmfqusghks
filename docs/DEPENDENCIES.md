@@ -2,7 +2,7 @@
 
 ## Runtime
 
-한글변환은 현재 제3자 런타임 패키지에 의존하지 않습니다.
+한글변환의 유일한 제3자 런타임 패키지는 서명된 소프트웨어 업데이트를 위한 Sparkle입니다.
 
 | Component | Provider | Purpose | Bundled | License handling |
 |---|---|---|---:|---|
@@ -11,12 +11,14 @@
 | CoreGraphics | Apple | event permission, session event tap, synthetic Unicode events | system framework | not redistributed separately |
 | ApplicationServices | Apple | Accessibility trust, focus/range validation | system framework | not redistributed separately |
 | Carbon/HIToolbox | Apple | Secure Input, input-source selection, global shortcuts | system framework | not redistributed separately |
+| Sparkle | Sparkle Project | HTTPS appcast, EdDSA 검증, 업데이트 설치 | 2.9.6 framework bundled | MIT 및 번들된 외부 라이선스 고지 포함 |
 
 ## Build and CI
 
 | Component | Pin | Purpose | License |
 |---|---|---|---|
 | `actions/checkout` | `3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7`) | source checkout in GitHub Actions | MIT |
+| Sparkle source/artifact | `2.9.6`, revision `ac2def288cbff5cfc7df3ffef6abdf45b72bcb0a` | SwiftPM 해석 및 업데이트 도구 | MIT 및 upstream 외부 라이선스 |
 
 ## Policy
 

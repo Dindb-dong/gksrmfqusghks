@@ -43,7 +43,7 @@
 - 사전·n-gram asset pipeline과 라이선스 검증
 - confidence tiers, user rules, adversarial corpus, benchmark
 
-검증: precision gate, deterministic benchmark, no-network asset build
+검증: precision gate, deterministic benchmark, Sparkle 외 no-direct-network asset build
 
 ## F04 — Permissions, event tap, and secure-input guard
 

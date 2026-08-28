@@ -47,7 +47,7 @@ fixture에는 실제 사용자의 입력, 채팅, 주소, 토큰, 비밀번호�
 
 - core tests and adversarial precision gate
 - debug and release universal builds
-- static no-network scan
+- Sparkle 외 직접 네트워크 API 정적 금지 검사
 - content-free log scan
 - secure field manual verification
 - clean-machine install, permission onboarding, correction, Undo, uninstall
