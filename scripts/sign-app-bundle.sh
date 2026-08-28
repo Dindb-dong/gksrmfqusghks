@@ -4,6 +4,7 @@ set -euo pipefail
 
 HANKEY_APP="${1:?usage: $0 /path/to/HanKey.app [identity]}"
 HANKEY_IDENTITY="${2:--}"
+HANKEY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 [[ -d "$HANKEY_APP" && "$HANKEY_APP" == *.app ]] || {
     echo "expected an app bundle: $HANKEY_APP" >&2
@@ -32,5 +33,11 @@ while IFS= read -r nested; do
     codesign "${sign_args[@]}" "$nested"
 done < <(find "$HANKEY_APP/Contents" -depth \( -name '*.xpc' -o -name '*.framework' -o -name '*.app' \) -type d)
 
-codesign "${sign_args[@]}" "$HANKEY_APP"
+if [[ "$HANKEY_IDENTITY" == "-" ]]; then
+    codesign "${sign_args[@]}" \
+        --entitlements "$HANKEY_ROOT/App/HanKey.ad-hoc.entitlements" \
+        "$HANKEY_APP"
+else
+    codesign "${sign_args[@]}" "$HANKEY_APP"
+fi
 codesign --verify --deep --strict --verbose=2 "$HANKEY_APP"

@@ -20,12 +20,20 @@ cleanup() {
 trap cleanup EXIT
 
 codesign --verify --deep --strict --verbose=2 "$HANKEY_APP"
+if [[ "${HANKEY_EXPECT_NOTARIZED:-0}" == "1" ]]; then
+    if codesign -d --entitlements :- "$HANKEY_APP" 2>/dev/null \
+        | grep -q 'com.apple.security.cs.disable-library-validation'; then
+        echo "notarized release must not disable library validation" >&2
+        exit 1
+    fi
+fi
 lipo "$HANKEY_APP/Contents/MacOS/HanKeyApp" -verify_arch arm64 x86_64
 test -f "$HANKEY_APP/Contents/Resources/Assets.car"
 test -f "$HANKEY_APP/Contents/Resources/AppIcon.icns"
 test -f "$HANKEY_APP/Contents/Resources/SBOM.spdx.json"
 test -d "$HANKEY_APP/Contents/Frameworks/Sparkle.framework"
 lipo "$HANKEY_APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" -verify_arch arm64 x86_64
+otool -l "$HANKEY_APP/Contents/MacOS/HanKeyApp" | grep -A2 LC_RPATH | grep -q '@executable_path/../Frameworks'
 unzip -tq "$HANKEY_ZIP" >/dev/null
 hdiutil verify "$HANKEY_DMG" >/dev/null
 
