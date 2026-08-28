@@ -1,18 +1,42 @@
-# HanKey 1.0.0
+# 한글변환 1.0.0
 
-HanKey is a local-only macOS menu bar utility that safely repairs text typed with the wrong ABC or 2-Set Korean input source, then switches the input source for the next word.
+한글변환의 첫 공개 릴리스입니다. 한/영 입력 소스를 잘못 선택한 채 입력한 단어를 이 Mac 안에서 판별하고, 안전하다고 확신할 때만 복구한 뒤 다음 입력 소스까지 전환합니다.
 
-Highlights:
+## 핵심 기능
 
-- Deterministic `gksrmffh → 한글로` and `ㅛㅐㅜㄴ댜 → yonsei` conversion.
-- Precision-first automatic detection with URL, identifier, code, random-value, and protected-app exclusions.
-- Secure Input, password field, browser address bar, terminal, IDE, password manager, remote desktop, unknown-field, and user app protection.
-- Clipboard-free verified range replacement and post-success input-source switching.
-- Manual selection/last-word conversion, strict one-step Undo, optional global shortcuts.
-- Explicit local Always/Never pairs and app exclusions with export, reset, and corruption recovery.
-- Persisted automatic-correction opt-in with independent login launch, correction announcement, and optional sound controls.
-- Privacy-first onboarding, accessible settings, and content-free diagnostics.
+- `gksrmffh → 한글로`, `ㅛㅐㅜㄴ댜 → yonsei` 양방향 두벌식 변환
+- Space와 자연문장 물음표 경계에서의 고신뢰 자동 교정
+- 모든 특수기호 경계 보존과 URL·쿼리·경로·코드형 입력의 실패 폐쇄
+- cmux·Terminal·iTerm2 전용 opt-in 모드와 `/compact`, `--help`, `-v` 형태의 명령 접두사 보존
+- 교정 직전 PID·포커스·커서·입력 소스를 재검증하는 클립보드 없는 텍스트 교체
+- 마지막 교정 되돌리기와 선택 영역·마지막 단어 수동 변환
+- 직접 관리할 수 있는 `항상 변환`, `변환 제외`, 앱 제외 목록
+- 교정 결과 전체를 삭제하고 같은 입력을 다시 했을 때만 작동하는 보수적 제외 학습
+- 설치된 앱을 이름과 아이콘으로 검색하는 제외 앱 선택기
+- 자동 변환 기준 50–100 슬라이더(기본 75, 권장 75–85)
+- 로그인 시 실행, 교정 알림, 효과음, 전역 단축키 설정
+- 메뉴에서 설정을 열 때 현재 Space의 최전면으로 올리는 설정창 동작
 
-Requirements: macOS 14+, ABC and 2-Set Korean input sources. Global automatic correction requires user-granted Input Monitoring and Accessibility permissions.
+## 자동 업데이트
 
-The DMG and nested app are universal (`arm64`, `x86_64`), Developer ID signed, Hardened Runtime enabled, Apple notarized, and stapled. Verify downloads with the attached `SHA256SUMS.txt`.
+- Sparkle 2.9.6 기반 자동 업데이트 확인과 수동 `지금 업데이트 확인`
+- 기본 24시간 확인 주기와 사용자 토글
+- HanKey 전용 EdDSA 앱캐스트 서명, Developer ID, Apple 공증 검증
+- 업데이트 요청에 키 입력·교정 내용·로컬 규칙을 포함하지 않는 격리된 네트워크 경계
+
+## 개인정보와 안전
+
+- 키 입력, 현재 단어, 선택 텍스트, 교정 전후 내용은 네트워크로 전송하거나 디스크에 기록하지 않습니다.
+- 텔레메트리, 분석, 광고, 클라우드 추론을 사용하지 않습니다.
+- 보안 입력, 비밀번호 필드, 브라우저 주소창, 비밀번호 관리자, 원격 데스크톱, 알 수 없는 필드는 자동 보호합니다.
+- 업데이트 외 직접 네트워크 클라이언트와 클립보드 fallback을 사용하지 않습니다.
+
+## 시스템 요구 사항과 배포 검증
+
+- macOS 14 이상
+- ABC와 두벌식 입력 소스
+- Apple Silicon·Intel universal 앱
+- Hardened Runtime과 Developer ID 서명
+- Apple 공증·staple과 Gatekeeper 검증
+
+다운로드 후 함께 제공되는 `SHA256SUMS.txt`로 DMG를 확인할 수 있습니다.

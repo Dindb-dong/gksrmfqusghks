@@ -544,5 +544,24 @@ struct SettingsView: View {
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
+
+    Section("소프트웨어 업데이트") {
+      Toggle(
+        "자동으로 업데이트 확인",
+        isOn: Binding(
+          get: { model.softwareUpdates.automaticallyChecksForUpdates },
+          set: { model.softwareUpdates.setAutomaticallyChecksForUpdates($0) }
+        )
+      )
+      .disabled(!model.softwareUpdates.isConfigured)
+      Text("공개 GitHub Release의 서명된 앱캐스트만 확인합니다. 키 입력, 교정 내용, 로컬 규칙은 전송하지 않습니다.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+      Button("지금 업데이트 확인") {
+        model.softwareUpdates.checkForUpdates()
+      }
+      .disabled(!model.softwareUpdates.isConfigured)
+      LabeledContent("업데이트 상태", value: model.softwareUpdates.status)
+    }
   }
 }

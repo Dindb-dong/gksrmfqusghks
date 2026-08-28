@@ -11,6 +11,7 @@ v1은 기존 ABC와 2-Set Korean 입력 소스를 유지하는 **메뉴 막대 �
 ```text
 HanKeyApp
  ├─ Onboarding / Settings / MenuBar / Notifications
+ ├─ SoftwareUpdateController → Sparkle
  └─ HanKeyPlatformMac
      ├─ PermissionController
      ├─ EventTap
@@ -167,7 +168,7 @@ Space 키 이벤트보다 편집기의 AX text 반영이 늦을 수 있으므로
 - 선택된 텍스트와 주변 문장
 - 앱별 입력 내용 통계
 
-런타임 코드의 `URLSession`, Network.framework, 소켓 사용을 CI 정적 검사로 금지합니다. 업데이트 확인이 필요해질 경우에도 입력 helper와 분리된 명시적 사용자 동작으로 별도 설계합니다.
+앱 자체 런타임 코드의 `URLSession`, Network.framework, 소켓 사용은 CI 정적 검사로 금지합니다. 유일한 네트워크 경로인 `SoftwareUpdateController`는 App 계층에서 Sparkle에만 의존하며 이벤트 tap, AX 교정, 학습 저장소와 데이터·호출 경로를 공유하지 않습니다. Sparkle은 공개 HTTPS 앱캐스트와 선택된 업데이트 아티팩트만 조회하고 EdDSA·Developer ID·공증 검증을 수행합니다.
 
 ## 11. 동시성과 성능
 
@@ -191,5 +192,5 @@ Space 키 이벤트보다 편집기의 AX text 반영이 늦을 수 있으므로
 
 - 첫 배포: Developer ID 서명·공증된 universal DMG
 - Release build는 Hardened Runtime을 사용합니다.
-- 앱 업데이트는 v1 범위에서 수동 다운로드로 시작할 수 있으며, 자동 업데이트 도입 시 별도 위협 모델과 서명 검증이 필요합니다.
+- 앱 업데이트는 Sparkle 2.9.6의 24시간 예약 확인과 수동 확인을 제공합니다. 앱캐스트는 HanKey 전용 EdDSA 키로 서명하고, 아티팩트는 Developer ID 서명·Apple 공증·checksum 검증 후 공개 GitHub Release에 게시합니다.
 - 재현 가능한 빌드·서명·공증 스크립트와 SBOM/의존성 고지를 릴리스 산출물에 포함합니다.

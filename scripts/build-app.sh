@@ -30,17 +30,13 @@ HANKEY_APP="$HANKEY_ROOT/dist/HanKey.app"
 "$HANKEY_ROOT/scripts/generate-app-icon.sh" >/dev/null
 
 rm -rf "$HANKEY_APP"
-mkdir -p "$HANKEY_APP/Contents/MacOS" "$HANKEY_APP/Contents/Resources"
+mkdir -p "$HANKEY_APP/Contents/MacOS" "$HANKEY_APP/Contents/Resources" "$HANKEY_APP/Contents/Frameworks"
 cp "$HANKEY_BIN_PATH/HanKeyApp" "$HANKEY_APP/Contents/MacOS/HanKeyApp"
+cp -R "$HANKEY_BIN_PATH/Sparkle.framework" "$HANKEY_APP/Contents/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$HANKEY_APP/Contents/MacOS/HanKeyApp"
 cp "$HANKEY_ROOT/App/Info.plist" "$HANKEY_APP/Contents/Info.plist"
 cp -R "$HANKEY_ROOT/.build/CompiledAssets/." "$HANKEY_APP/Contents/Resources/"
 chmod 755 "$HANKEY_APP/Contents/MacOS/HanKeyApp"
 
-if [[ "$HANKEY_IDENTITY" == "-" ]]; then
-    codesign --force --options runtime --sign - --timestamp=none "$HANKEY_APP"
-else
-    codesign --force --options runtime --timestamp --sign "$HANKEY_IDENTITY" "$HANKEY_APP"
-fi
-
-codesign --verify --deep --strict "$HANKEY_APP"
+"$HANKEY_ROOT/scripts/sign-app-bundle.sh" "$HANKEY_APP" "$HANKEY_IDENTITY"
 echo "$HANKEY_APP"

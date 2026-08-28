@@ -6,10 +6,11 @@
 
 ## Artifacts
 
-- `HanKey.app` universal binary
+- `HanKey.app` universal binary with embedded Sparkle framework
 - versioned DMG
 - SHA-256 checksums
 - SBOM/dependency and dictionary license notice
+- Sparkle EdDSA-signed `appcast.xml`
 - release notes and compatibility matrix
 - build, signing, notarization evidence
 
@@ -22,8 +23,9 @@
 5. package DMG and sign
 6. notarize and staple
 7. Gatekeeper assessment and signature verification
-8. clean-machine install and permission smoke test
-9. GitHub release publish after all previous gates
+8. notarized DMG로 Sparkle appcast 생성·서명·검증
+9. clean-machine install and permission smoke test
+10. GitHub release와 stable latest appcast publish after all previous gates
 
 ## Credentials boundary
 
@@ -56,8 +58,12 @@ HANKEY_EXPECT_NOTARIZED=1 ./packaging/verify-release.sh
 - `1.0.0`: PRD release gate 충족
 - detector asset revision은 app version과 함께 기록
 
+## Sparkle feed
+
+안정 피드는 `https://github.com/Dindb-dong/gksrmfqusghks/releases/latest/download/appcast.xml`입니다. `appcast.xml`은 최종 공증·staple된 DMG로 생성하고 Keychain의 `hankey` EdDSA 계정으로 서명합니다. enclosure URL·파일 길이·EdDSA 서명을 검증한 뒤 DMG와 같은 Release에 게시합니다.
+
 ## Rollback
 
 - GitHub release assets는 삭제보다 새 수정 버전을 발행합니다.
-- 자동 업데이트가 없으므로 사용자가 이전 공증 버전을 명시적으로 설치할 수 있도록 checksum과 release notes를 유지합니다.
+- Sparkle feed에서 잘못된 항목을 조용히 교체하지 않습니다. 수정 버전을 더 높은 build/version으로 발행하고 사용자가 이전 공증 버전을 수동 설치할 수 있도록 checksum과 release notes를 유지합니다.
 - 보안 또는 데이터 처리 회귀는 즉시 자동 교정 기본 중지 안내와 수정 릴리스를 우선합니다.

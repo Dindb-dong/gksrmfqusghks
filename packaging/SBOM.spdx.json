@@ -21,6 +21,17 @@
       "licenseDeclared": "MIT",
       "copyrightText": "Copyright 2026 Max Kim",
       "externalRefs": []
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Sparkle",
+      "name": "Sparkle",
+      "versionInfo": "2.9.6",
+      "downloadLocation": "https://github.com/sparkle-project/Sparkle/releases/tag/2.9.6",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright Sparkle contributors",
+      "externalRefs": []
     }
   ],
   "relationships": [
@@ -28,6 +39,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-HanKey"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HanKey",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-Sparkle"
     }
   ]
 }
