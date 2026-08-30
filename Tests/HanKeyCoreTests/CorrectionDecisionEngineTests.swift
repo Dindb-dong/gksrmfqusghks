@@ -17,6 +17,21 @@ final class CorrectionDecisionEngineTests: XCTestCase {
     XCTAssertFalse(proposal.usedExplicitRule)
   }
 
+  func testCorrectsKnownKoreanCandidateUsingShiftedDubeolsikKeys() throws {
+    XCTAssertEqual(DubeolsikConverter.compose("RmsgruTek"), "끊겼다")
+
+    let proposal = try correction(
+      for: request(
+        token: "RmsgruTek",
+        activeLanguage: .english,
+        candidateKnown: true
+      )
+    )
+
+    XCTAssertEqual(proposal.replacement, "끊겼다")
+    XCTAssertEqual(proposal.targetLanguage, .korean)
+  }
+
   func testCorrectsMalformedKoreanJamoIntoEnglish() throws {
     let proposal = try correction(
       for: request(token: "ㅛㅐㅜㄴ댜", activeLanguage: .korean)
@@ -195,7 +210,8 @@ final class CorrectionDecisionEngineTests: XCTestCase {
   func testAdversarialTokensNeverReachCorrection() {
     let tokens = [
       "https://example.com", "person@example.com", "550e8400-e29b-41d4-a716-446655440000",
-      "0123456789abcdef0123456789abcdef", "user_name", "camelCase", "TLS", "abc123",
+      "0123456789abcdef0123456789abcdef", "user_name", "camelCase", "userToken",
+      "parseTree", "myURL", "TLS", "abc123",
     ]
     for token in tokens {
       guard
