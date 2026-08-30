@@ -91,6 +91,11 @@ final class AppModel {
   private(set) var correctionActivity: CorrectionActivity = .idle
   private(set) var learningRules: [LearningRuleEntry] = []
   private(set) var excludedApplications: [String] = []
+  private(set) var correctionStatistics: [CorrectionStatisticEntry] = []
+  private(set) var totalAutomaticCorrectionCount = 0
+  private(set) var statisticsStoreRecovered = false
+  private(set) var statisticsStorePermissionWarning = false
+  private(set) var statisticsMessage = ""
   private(set) var learningStoreRecovered = false
   private(set) var learningStorePermissionWarning = false
   private(set) var learningMessage = ""
@@ -111,6 +116,7 @@ final class AppModel {
   @ObservationIgnored private var pendingNeverRecord: CorrectionTransactionRecord?
   @ObservationIgnored private var manualCoordinator: ManualCorrectionCoordinator?
   @ObservationIgnored private var learningStore: LocalLearningStore?
+  @ObservationIgnored private var correctionStatisticsStore: LocalCorrectionStatisticsStore?
   @ObservationIgnored private var shortcutManager: GlobalShortcutManager?
   @ObservationIgnored private var automaticCorrectionPreference: AutomaticCorrectionPreference?
   @ObservationIgnored private var automaticCorrectionThresholdPreference:
@@ -146,6 +152,12 @@ final class AppModel {
     excludedApplications = learningStore.excludedApplicationBundleIdentifiers
     learningStoreRecovered = learningStore.recoveredFromCorruption
     learningStorePermissionWarning = learningStore.permissionHardeningFailed
+    let correctionStatisticsStore = LocalCorrectionStatisticsStore()
+    self.correctionStatisticsStore = correctionStatisticsStore
+    correctionStatistics = correctionStatisticsStore.sortedEntries
+    totalAutomaticCorrectionCount = correctionStatisticsStore.totalCorrectionCount
+    statisticsStoreRecovered = correctionStatisticsStore.recoveredFromCorruption
+    statisticsStorePermissionWarning = correctionStatisticsStore.permissionHardeningFailed
     transactionCoordinator = CorrectionTransactionCoordinator(
       inputSources: inputSourceController,
       isApplicationExcluded: { [weak learningStore] bundleIdentifier in
@@ -235,6 +247,15 @@ final class AppModel {
 
   var alwaysConvertRules: [LearningRuleEntry] {
     learningRules.filter { $0.behavior == .always }
+  }
+
+  func resetCorrectionStatistics() {
+    do {
+      try correctionStatisticsStore?.reset()
+      refreshCorrectionStatistics(message: "자동 교정 통계를 초기화했습니다.")
+    } catch {
+      statisticsMessage = "자동 교정 통계를 초기화하지 못했습니다."
+    }
   }
 
   func refreshPermissions() {
@@ -696,6 +717,7 @@ final class AppModel {
       }
       switch result {
       case .corrected(let record):
+        recordAutomaticCorrection(original: proposal.original, replacement: proposal.replacement)
         beginDeletionTracking(
           word: word,
           focusIdentity: focusIdentity,
@@ -709,6 +731,7 @@ final class AppModel {
         correctionActivity = .corrected
         deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
+        recordAutomaticCorrection(original: proposal.original, replacement: proposal.replacement)
         beginDeletionTracking(
           word: word,
           focusIdentity: focusIdentity,
@@ -746,6 +769,7 @@ final class AppModel {
       guard let self else { return }
       switch result {
       case .corrected(let record):
+        recordAutomaticCorrection(original: proposal.original, replacement: proposal.replacement)
         beginTerminalDeletionTrackingIfSupported(
           record: record,
           word: word,
@@ -756,6 +780,7 @@ final class AppModel {
         correctionActivity = .corrected
         deliverCorrectionFeedback()
       case .cancelled(.sourceSwitchFailed(let record)):
+        recordAutomaticCorrection(original: proposal.original, replacement: proposal.replacement)
         beginTerminalDeletionTrackingIfSupported(
           record: record,
           word: word,
@@ -1011,6 +1036,27 @@ final class AppModel {
     learningRules = learningStore?.rules.entries ?? []
     excludedApplications = learningStore?.excludedApplicationBundleIdentifiers ?? []
     learningMessage = message
+  }
+
+  private func recordAutomaticCorrection(original: String, replacement: String) {
+    do {
+      try correctionStatisticsStore?.record(original: original, replacement: replacement)
+      refreshCorrectionStatistics()
+    } catch {
+      statisticsStorePermissionWarning =
+        correctionStatisticsStore?.permissionHardeningFailed ?? false
+      statisticsMessage = "자동 교정 통계를 저장하지 못했습니다."
+    }
+  }
+
+  private func refreshCorrectionStatistics(message: String? = nil) {
+    correctionStatistics = correctionStatisticsStore?.sortedEntries ?? []
+    totalAutomaticCorrectionCount = correctionStatisticsStore?.totalCorrectionCount ?? 0
+    statisticsStorePermissionWarning =
+      correctionStatisticsStore?.permissionHardeningFailed ?? false
+    if let message {
+      statisticsMessage = message
+    }
   }
 
   private func rulePair(

@@ -9,6 +9,7 @@
 - tokenizer, buffer invalidation, confidence decision
 - URL/email/IP/UUID/hash/path/code/high-entropy safety filters
 - Always/Never/app rules and persistence migration
+- `_`·`-` 보존 경계와 자동 교정 통계의 집계·저장·손상 복구
 
 ### Property and corpus tests
 

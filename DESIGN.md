@@ -3,9 +3,9 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-08-28
-- Primary product surfaces: 첫 실행 온보딩, 메뉴 막대 상태 메뉴, 설정, 로컬 학습 목록, 비침해 교정 알림, 소프트웨어 업데이트
-- Evidence reviewed: `PRD.md`, macOS 시스템 설정과 메뉴 막대 관례, Apple 입력 모니터링·손쉬운 사용 권한 흐름, 유사 macOS 입력 도구의 공개 UX
+- Last refreshed: 2026-08-30
+- Primary product surfaces: 첫 실행 온보딩, 메뉴 막대 상태 메뉴, 설정, 로컬 학습 목록, 자동 교정 통계, 비침해 교정 알림, 소프트웨어 업데이트
+- Evidence reviewed: `PRD.md`, `SECURITY.md`, `Sources/HanKeyApp/SettingsView.swift`, macOS 시스템 설정과 메뉴 막대 관례, Apple 입력 모니터링·손쉬운 사용 권한 흐름, 유사 macOS 입력 도구의 공개 UX
 - Assumption: 사용자는 자동화보다 키 입력에 대한 통제와 신뢰를 먼저 확인합니다.
 
 ## Brand
@@ -29,7 +29,7 @@
 ## Information architecture
 
 - Primary navigation: 메뉴 막대 메뉴 → 상태/일시정지/마지막 교정/설정/도움말/종료
-- Core routes/screens: Welcome, Privacy promise, Permission setup, Try it, Ready, Settings General, Safety, Learning, Shortcuts, About
+- Core routes/screens: Welcome, Privacy promise, Permission setup, Try it, Ready, Settings General, Safety, Never Convert, Always Convert, Shortcuts, Learning, Statistics, About
 - Content hierarchy: 현재 보호 상태 → 사용자 제어 → 권한 설명 → 세부 설정
 
 ## Design principles
@@ -52,7 +52,7 @@
 ## Components
 
 - Existing components to reuse: SwiftUI `Settings`, `Form`, `Toggle`, `Picker`, `Table`, `MenuBarExtra`, 표준 권한 링크 버튼
-- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge, AutomaticCorrectionThresholdSlider, SettingsWindowBridge, SoftwareUpdateSettings
+- New/changed components: PermissionRow, ProtectionStatus, CorrectionToast, ShortcutRecorder, InstalledApplicationPicker, ExcludedApplicationRow, NeverConvertList, LocalOnlyDisclosure, CompatibilityBadge, AutomaticCorrectionThresholdSlider, CorrectionStatisticsSummary, CorrectionStatisticsList, SettingsWindowBridge, SoftwareUpdateSettings
 - Variants and states: normal, paused, permission-required, secure-input, excluded, unsupported, error
 - Token/component ownership: App target이 화면을 소유하고 Core 모듈은 사용자 표시 타입을 의존하지 않습니다.
 
@@ -73,7 +73,7 @@
 ## Interaction states
 
 - Loading: 권한 재확인과 입력 소스 목록 조회에만 짧은 progress 사용
-- Empty: 학습 목록이 비었음을 개인정보 이점과 함께 설명
+- Empty: 학습 또는 통계 목록이 비었음을 개인정보 이점과 다음 채움 조건을 함께 설명
 - Error: 실패 원인, 영향, 복구 버튼, 안전한 현재 동작을 함께 표시
 - Success: 권한 준비 완료와 샘플 교정 성공을 명시
 - Disabled: 왜 비활성인지와 필요한 선행 조건을 인접 설명. 복구 가능한 시스템 상태를 단순히 비활성화하지 않음
@@ -144,6 +144,19 @@
 - 자동 학습 직후 실제 단어를 포함하지 않는 로컬 알림을 표시합니다. `변환하지 않기`는 제외를 유지하고 `계속 자동 변환`은 동일 규칙을 `항상 변환`으로 이동합니다.
 - `항상 변환` 탭도 원문·후보 쌍의 직접 추가, 목록 확인, 삭제를 같은 구조로 제공합니다.
 - 알림 권한이 없거나 응답하지 않아도 규칙은 `변환 제외` 목록에서 직접 검토할 수 있습니다.
+
+### 구분자 자동 교정
+
+- 일반 편집기에서 `_`와 `-`는 앞 토큰을 끝내는 보존 구분자로 취급합니다. `ㅁㅊㅁㅇ드ㅑㅊ_ㅅ미ㅏ → academic_talk`처럼 각 구간을 독립적으로 판정하고 구분자는 바꾸지 않습니다.
+- 이미 토큰 안에 포함된 snake_case, kebab-case, 경로, URL, 이메일, 코드형 입력을 통째로 변환하지 않습니다. `.`, `/`, `\\`, `@`, 일반 `?`는 계속 위험한 연속 경계로 실패 폐쇄합니다.
+- 터미널 전용 모드의 보수적인 Space·자연문장 `?` 계약은 변경하지 않습니다.
+
+### 자동 교정 통계
+
+- 설정의 `통계` 탭은 전체 자동 교정 횟수, 고유 단어 쌍 수, `교정 전 → 교정 후`별 누적 횟수를 내림차순으로 보여줍니다.
+- 텍스트 교체가 검증된 자동 교정만 집계합니다. 수동 변환, 보류, 실패한 교체는 집계하지 않으며 입력 소스 전환만 실패한 경우에는 이미 완료된 텍스트 교정을 집계합니다.
+- 통계는 이 Mac의 `correction-statistics.json`에만 저장합니다. 주변 문장, 앱 이름, 시각, 원시 키 입력, 선택 텍스트는 저장하지 않고 네트워크로 전송하지 않습니다.
+- 빈 상태는 자동 교정 성공 시 목록이 채워진다고 설명합니다. 사용자는 확인 대화상자를 거쳐 통계만 전체 초기화할 수 있으며 학습 규칙과 설정은 유지됩니다.
 
 ## Open questions
 

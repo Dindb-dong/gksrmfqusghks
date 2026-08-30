@@ -18,6 +18,7 @@ HanKeyApp
      ├─ FocusedTextAdapter
      ├─ TextRewriter
      ├─ TerminalEventRewriter
+     ├─ LocalCorrectionStatisticsStore
      └─ InputSourceController
          ↓
      HanKeyCore
@@ -46,7 +47,7 @@ HanKeyApp
 6. `CorrectionDecisionEngine`이 원문과 후보 점수 차이를 계산합니다.
 7. 고신뢰 결정이면 `CorrectionCoordinator`가 포커스와 커서를 재검증합니다.
 8. 텍스트를 교체하고 성공을 확인한 뒤 `InputSourceController`가 목표 소스를 선택합니다.
-9. 결과는 콘텐츠가 없는 상태 이벤트로 UI에 전달되고 버퍼는 폐기됩니다.
+9. 검증된 자동 교정의 전·후 단어 쌍과 누적 횟수만 로컬 통계 저장소에 기록하고, 상태 이벤트를 UI에 전달한 뒤 버퍼를 폐기합니다.
 
 ### 3.1 터미널 제한 경로
 
@@ -119,7 +120,7 @@ score(text) = dictionary
 
 한글 IME는 단어 경계 전까지 marked text를 유지할 수 있으므로 자동 교정은 기본적으로 경계 이벤트 후 다음 run-loop에서 실행합니다.
 
-Space 키 이벤트보다 편집기의 AX text 반영이 늦을 수 있으므로 표준 교정 트랜잭션은 최대 4회의 짧고 제한된 재시도 동안 실제 Space 경계를 기다립니다. 자연문장 물음표는 URL 쿼리의 시작과 구분하기 위해 확인 창 전체를 기다리고, 그 사이 printable suffix나 다음 물리 이벤트가 생기면 취소합니다. 주소창·경로·URL·식별자 경계는 계속 실패 폐쇄합니다. 터미널은 한 번의 짧은 커밋 대기 뒤 caret을 연속 조회해 즉시 안정성을 확인하고, AX caret이 아직 게시되지 않은 경우에만 최대 4회 재시도합니다. 각 시도에서 PID·포커스·selection·입력 소스·Secure Input·이벤트 세대를 다시 확인하며, Space 커밋으로 설명 가능한 단 한 번의 `+1` caret 이동 외의 변화가 있으면 취소합니다.
+Space 키 이벤트보다 편집기의 AX text 반영이 늦을 수 있으므로 표준 교정 트랜잭션은 최대 4회의 짧고 제한된 재시도 동안 실제 Space 경계를 기다립니다. 일반 편집기의 `_`와 `-`는 앞 단일 토큰을 끝내는 보존 경계로 허용하되, 이미 완성된 복합 식별자를 통째로 변환하지 않습니다. 자연문장 물음표는 URL 쿼리의 시작과 구분하기 위해 확인 창 전체를 기다리고, 그 사이 printable suffix나 다음 물리 이벤트가 생기면 취소합니다. 주소창·경로·URL과 `.`, `/`, `\\`, `@`, 일반 `?` 경계는 계속 실패 폐쇄합니다. 터미널은 한 번의 짧은 커밋 대기 뒤 caret을 연속 조회해 즉시 안정성을 확인하고, AX caret이 아직 게시되지 않은 경우에만 최대 4회 재시도합니다. 각 시도에서 PID·포커스·selection·입력 소스·Secure Input·이벤트 세대를 다시 확인하며, Space 커밋으로 설명 가능한 단 한 번의 `+1` caret 이동 외의 변화가 있으면 취소합니다.
 
 1. 이벤트 시점의 앱 PID, 포커스 element, selection range를 기록합니다.
 2. 실행 직전에 동일 포커스와 예상 caret인지 재확인합니다.
@@ -154,6 +155,7 @@ Space 키 이벤트보다 편집기의 AX text 반영이 늦을 수 있으므로
 - 설정 토글과 단축키
 - bundle ID 기반 앱 제외 목록
 - 사용자가 승인한 Always/Never 단어쌍
+- 검증된 자동 교정의 전·후 단어 쌍과 누적 횟수
 - 콘텐츠 없는 최근 오류 코드와 버전 정보
 
 메모리에서만 허용:
@@ -167,6 +169,9 @@ Space 키 이벤트보다 편집기의 AX text 반영이 늦을 수 있으므로
 - 현재·과거 단어 버퍼
 - 선택된 텍스트와 주변 문장
 - 앱별 입력 내용 통계
+- 교정 시각과 원시 키 시퀀스
+
+자동 교정 통계는 `LocalCorrectionStatisticsStore`가 별도 versioned JSON으로 원자 기록하고 사용자 전용 디렉터리 `0700`, 파일 `0600` 권한을 적용합니다. 집계 키는 성공한 교정 전·후 단어 쌍뿐이며 앱, 포커스, 시각, 경계 문자는 포함하지 않습니다. 파일 손상은 격리 후 빈 통계로 복구하고 사용자가 설정에서 통계만 초기화할 수 있습니다.
 
 앱 자체 런타임 코드의 `URLSession`, Network.framework, 소켓 사용은 CI 정적 검사로 금지합니다. 유일한 네트워크 경로인 `SoftwareUpdateController`는 App 계층에서 Sparkle에만 의존하며 이벤트 tap, AX 교정, 학습 저장소와 데이터·호출 경로를 공유하지 않습니다. Sparkle은 공개 HTTPS 앱캐스트와 선택된 업데이트 아티팩트만 조회하고 EdDSA·Developer ID·공증 검증을 수행합니다.
 

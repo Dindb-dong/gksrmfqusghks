@@ -3,7 +3,7 @@
 ## Product contracts
 
 - `PRD.md`, `DESIGN.md`, `ARCHITECTURE.md`, `SECURITY.md` are implementation contracts.
-- Typed-content behavior is local-only: no telemetry, analytics, cloud inference, or typed-content persistence. The only runtime network path is Sparkle fetching the public HTTPS appcast and signed release artifact; it must never receive input content or local rules.
+- Typed-content behavior is local-only: no telemetry, remote analytics, or cloud inference. Disk persistence is limited to user-controlled learning rules and successful automatic-correction word pairs with aggregate counts; never persist surrounding text, raw key sequences, timestamps, or per-app content statistics. The only runtime network path is Sparkle fetching the public HTTPS appcast and signed release artifact; it must never receive input content, local rules, or correction statistics.
 - Precision beats recall. Secure, ambiguous, code-like, address-like, or unsupported input must fail closed.
 - Never log raw key events, key sequences, focused/selected text, or surrounding context.
 
