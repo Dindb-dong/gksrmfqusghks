@@ -5,7 +5,7 @@ final class BoundarySafetyPolicyTests: XCTestCase {
   private let policy = BoundarySafetyPolicy()
 
   func testSentenceAndSymbolBoundariesRemainEligible() {
-    for boundary in ["", " ", "!", "~", "+", "$", "^", "()", "!! "] {
+    for boundary in ["", " ", "!", "~", "+", "$", "^", "_", "-", "()", "!! "] {
       XCTAssertTrue(policy.permitsAutomaticCorrection(boundary: boundary), boundary)
     }
     for boundary in ["?", "? "] {
@@ -20,7 +20,7 @@ final class BoundarySafetyPolicyTests: XCTestCase {
   }
 
   func testAddressPathAndIdentifierContinuationsFailClosed() {
-    for boundary in ["@", "/", "\\", ".", "_", "-", "?", "@ ", "/ ", "? ", "... "] {
+    for boundary in ["@", "/", "\\", ".", "?", "@ ", "/ ", "? ", "... "] {
       XCTAssertFalse(policy.permitsAutomaticCorrection(boundary: boundary), boundary)
     }
   }

@@ -122,6 +122,31 @@ final class WordBufferTests: XCTestCase {
     XCTAssertNil(word.leadingCommandPrefix)
   }
 
+  func testUnderscoreAndHyphenCompleteOnlyThePreviousSegment() throws {
+    for separatorObservation in [
+      BufferObservation.boundary(.punctuation),
+      .commandPrefixSymbol(.hyphen),
+    ] {
+      var buffer = WordBuffer()
+      for token in try tokens("academic") {
+        _ = buffer.handle(.printable(token), at: 1)
+      }
+
+      XCTAssertEqual(
+        buffer.handle(separatorObservation, at: 2),
+        .completed(BufferedWord(tokens: try tokens("academic")), boundary: .punctuation)
+      )
+
+      for token in try tokens("talk") {
+        _ = buffer.handle(.printable(token), at: 3)
+      }
+      XCTAssertEqual(
+        buffer.handle(.boundary(.space), at: 4),
+        .completed(BufferedWord(tokens: try tokens("talk")), boundary: .space)
+      )
+    }
+  }
+
   func testWordAndLineDeletionPurgeUnknownBufferExtent() throws {
     for deletion in [BackwardDeletionKind.word, .line] {
       var buffer = WordBuffer()

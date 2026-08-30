@@ -191,7 +191,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
 
   func testPreservesEverySpecialSymbolBoundary() async {
     let symbols = [
-      "~", "`", "!", "#", "$", "%", "^", "&", "*", "(", ")", "=", "+", "[", "{",
+      "~", "`", "!", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "=", "+", "[", "{",
       "]", "}", "|", ";", ":", "'", "\"", ",", "<", ">", "§", "±", "¥",
       "©", "™", "€", "√", "∞", "•", "…",
     ]
@@ -219,8 +219,34 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     }
   }
 
-  func testAddressPathAndIdentifierBoundariesFailClosedEvenForProposal() async {
-    for symbol in ["@", "/", "\\", ".", "_", "-", "?"] {
+  func testCorrectsTheSegmentBeforeUnderscoreAndHyphen() async {
+    let original = "ㅁㅊㅁㅇ드ㅑㅊ"
+    for separator in ["_", "-"] {
+      let document = original + separator
+      let rewriter = FakeTextRewriter(
+        document: document,
+        caret: document.utf16.count,
+        identity: identity
+      )
+      let sources = FakeInputSources(currentLanguage: .korean)
+      let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+
+      let result = await coordinator.perform(
+        proposal: proposal(original: original, replacement: "academic", target: .english),
+        boundary: .punctuation,
+        expectedFocus: identity
+      )
+
+      guard case .corrected = result else {
+        return XCTFail("Expected the segment before \(separator) to correct, got \(result)")
+      }
+      XCTAssertEqual(rewriter.document, "academic\(separator)")
+      XCTAssertEqual(sources.selectedLanguages, [.english])
+    }
+  }
+
+  func testAddressPathAndQueryBoundariesFailClosedEvenForProposal() async {
+    for symbol in ["@", "/", "\\", ".", "?"] {
       let original = "gksrmffh\(symbol)"
       let rewriter = FakeTextRewriter(
         document: original,
