@@ -245,9 +245,13 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     }
   }
 
-  func testAddressPathAndQueryBoundariesFailClosedEvenForProposal() async {
-    for symbol in ["@", "/", "\\", ".", "?"] {
-      let original = "gksrmffh\(symbol)"
+  func testAmbiguousSpecialCharactersCorrectAfterSettlingWithoutContinuation() async {
+    let cases: [(symbol: String, boundary: WordBoundary)] = [
+      ("@", .punctuation), ("/", .punctuation), ("\\", .punctuation),
+      (".", .punctuation), ("?", .questionMark),
+    ]
+    for testCase in cases {
+      let original = "gksrmffh\(testCase.symbol)"
       let rewriter = FakeTextRewriter(
         document: original,
         caret: original.utf16.count,
@@ -257,21 +261,127 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
 
       let result = await coordinator.perform(
-        proposal: CorrectionProposal(
-          original: "gksrmffh",
-          replacement: "한글로",
-          targetLanguage: .korean,
-          confidence: 1,
-          usedExplicitRule: true
-        ),
+        proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+        boundary: testCase.boundary,
+        expectedFocus: identity
+      )
+
+      guard case .corrected = result else {
+        return XCTFail("Expected \(testCase.symbol) to correct after settling, got \(result)")
+      }
+      XCTAssertEqual(rewriter.document, "한글로\(testCase.symbol)")
+      XCTAssertEqual(sources.selectedLanguages, [.korean])
+    }
+  }
+
+  func testAmbiguousSpecialCharacterContinuationCancelsBeforeMutation() async {
+    let cases: [(symbol: String, boundary: WordBoundary)] = [
+      ("@", .punctuation), ("/", .punctuation), ("\\", .punctuation),
+      (".", .punctuation), ("?", .questionMark),
+    ]
+    for testCase in cases {
+      let original = "gksrmffh\(testCase.symbol)"
+      let rewriter = FakeTextRewriter(
+        document: original,
+        caret: original.utf16.count,
+        identity: identity
+      )
+      let sources = FakeInputSources(currentLanguage: .english)
+      var delayCount = 0
+      let coordinator = CorrectionTransactionCoordinator(
+        rewriter: rewriter,
+        inputSources: sources,
+        verificationAttempts: 4,
+        punctuationSettlingAttempts: 12,
+        delay: {
+          delayCount += 1
+          if delayCount == 2 {
+            rewriter.document.append("a")
+            rewriter.selection = TextUTF16Range(
+              location: rewriter.document.utf16.count,
+              length: 0
+            )
+          }
+        }
+      )
+
+      let result = await coordinator.perform(
+        proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+        boundary: testCase.boundary,
+        expectedFocus: identity
+      )
+
+      XCTAssertEqual(result, .cancelled(.textMismatch), testCase.symbol)
+      XCTAssertEqual(rewriter.document, "\(original)a", testCase.symbol)
+      XCTAssertEqual(rewriter.replaceCount, 0, testCase.symbol)
+      XCTAssertTrue(sources.selectedLanguages.isEmpty, testCase.symbol)
+    }
+  }
+
+  func testPhysicalInputSequenceChangeCancelsBeforeReadingOrMutation() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh\"", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    var sequence: UInt64 = 10
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter,
+      inputSources: sources,
+      currentSequence: { sequence },
+      verificationAttempts: 4,
+      punctuationSettlingAttempts: 12,
+      delay: { sequence = 11 }
+    )
+
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .punctuation,
+      expectedFocus: identity,
+      expectedEventSequence: 10
+    )
+
+    XCTAssertEqual(result, .cancelled(.eventSequenceChanged))
+    XCTAssertEqual(rewriter.readCount, 0)
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
+  func testDelayedStraightAndSmartDoubleQuotesArePreserved() async {
+    for quote in ["\"", "“", "”", "„", "«", "»"] {
+      let original = "gksrmffh"
+      let rewriter = FakeTextRewriter(
+        document: original,
+        caret: original.utf16.count,
+        identity: identity
+      )
+      let sources = FakeInputSources(currentLanguage: .english)
+      var delayCount = 0
+      let coordinator = CorrectionTransactionCoordinator(
+        rewriter: rewriter,
+        inputSources: sources,
+        verificationAttempts: 4,
+        punctuationSettlingAttempts: 12,
+        delay: {
+          delayCount += 1
+          if delayCount == 9 {
+            rewriter.document.append(quote)
+            rewriter.selection = TextUTF16Range(
+              location: rewriter.document.utf16.count,
+              length: 0
+            )
+          }
+        }
+      )
+
+      let result = await coordinator.perform(
+        proposal: proposal(original: original, replacement: "한글로", target: .korean),
         boundary: .punctuation,
         expectedFocus: identity
       )
 
-      XCTAssertEqual(result, .cancelled(.unsafeBoundary), symbol)
-      XCTAssertEqual(rewriter.document, original, symbol)
-      XCTAssertEqual(rewriter.replaceCount, 0, symbol)
-      XCTAssertTrue(sources.selectedLanguages.isEmpty, symbol)
+      guard case .corrected = result else {
+        return XCTFail("Expected delayed quote \(quote) to correct, got \(result)")
+      }
+      XCTAssertEqual(rewriter.document, "한글로\(quote)")
+      XCTAssertEqual(sources.selectedLanguages, [.korean])
     }
   }
 

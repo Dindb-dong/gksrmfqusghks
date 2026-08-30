@@ -7,6 +7,7 @@ final class BoundarySafetyPolicyTests: XCTestCase {
   func testSentenceAndSymbolBoundariesRemainEligible() {
     for boundary in ["", " ", "!", "~", "+", "$", "^", "_", "-", "()", "!! "] {
       XCTAssertTrue(policy.permitsAutomaticCorrection(boundary: boundary), boundary)
+      XCTAssertFalse(policy.requiresContinuationCheck(boundary: boundary), boundary)
     }
     for boundary in ["?", "? "] {
       XCTAssertTrue(
@@ -19,9 +20,17 @@ final class BoundarySafetyPolicyTests: XCTestCase {
     }
   }
 
-  func testAddressPathAndIdentifierContinuationsFailClosed() {
+  func testAmbiguousContinuationBoundariesRequireASettlingWindow() {
     for boundary in ["@", "/", "\\", ".", "?", "@ ", "/ ", "? ", "... "] {
       XCTAssertFalse(policy.permitsAutomaticCorrection(boundary: boundary), boundary)
+      XCTAssertTrue(policy.requiresContinuationCheck(boundary: boundary), boundary)
+      XCTAssertTrue(
+        policy.permitsAutomaticCorrection(
+          boundary: boundary,
+          hasSettledAmbiguousBoundary: true
+        ),
+        boundary
+      )
     }
   }
 }

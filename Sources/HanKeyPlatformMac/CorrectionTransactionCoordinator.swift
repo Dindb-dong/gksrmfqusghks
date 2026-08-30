@@ -5,12 +5,15 @@ import HanKeyCore
 public final class CorrectionTransactionCoordinator {
   public typealias Delay = @MainActor @Sendable () async -> Void
   public typealias ExclusionProvider = @MainActor (String?) -> Bool
+  public typealias SequenceProvider = @MainActor () -> UInt64
 
   private let rewriter: any FocusedTextRewriting
   private let inputSources: any InputSourceControlling
   private let isApplicationExcluded: ExclusionProvider
+  private let currentSequence: SequenceProvider
   private let delay: Delay
   private let verificationAttempts: Int
+  private let punctuationSettlingAttempts: Int
   private var isBusy = false
   private static let specialBoundaryCharacters = CharacterSet.punctuationCharacters.union(.symbols)
 
@@ -18,7 +21,9 @@ public final class CorrectionTransactionCoordinator {
     rewriter: any FocusedTextRewriting = FocusedTextRewriter(),
     inputSources: any InputSourceControlling = InputSourceController(),
     isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
+    currentSequence: @escaping SequenceProvider = { 0 },
     verificationAttempts: Int = 4,
+    punctuationSettlingAttempts: Int = 12,
     delay: @escaping Delay = {
       await withCheckedContinuation { continuation in
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(8)) {
@@ -28,17 +33,21 @@ public final class CorrectionTransactionCoordinator {
     }
   ) {
     precondition(verificationAttempts > 0)
+    precondition(punctuationSettlingAttempts > 0)
     self.rewriter = rewriter
     self.inputSources = inputSources
     self.isApplicationExcluded = isApplicationExcluded
+    self.currentSequence = currentSequence
     self.verificationAttempts = verificationAttempts
+    self.punctuationSettlingAttempts = punctuationSettlingAttempts
     self.delay = delay
   }
 
   public func perform(
     proposal: CorrectionProposal,
     boundary: WordBoundary,
-    expectedFocus: FocusedElementIdentity
+    expectedFocus: FocusedElementIdentity,
+    expectedEventSequence: UInt64? = nil
   ) async -> CorrectionTransactionResult {
     guard !isBusy else {
       return .cancelled(.busy)
@@ -56,13 +65,20 @@ public final class CorrectionTransactionCoordinator {
     var committedText:
       (
         snapshot: FocusedTextSnapshot,
-        located: (range: TextUTF16Range, text: String, boundary: String)
+        located: (range: TextUTF16Range, text: String, boundary: String),
+        settledAmbiguousBoundary: Bool
       )?
     var observedSnapshot = false
-    for attempt in 0..<verificationAttempts {
+    let locationAttempts =
+      boundary == .punctuation ? punctuationSettlingAttempts : verificationAttempts
+    let boundaryPolicy = BoundarySafetyPolicy()
+    for attempt in 0..<locationAttempts {
       await delay()
       guard !Task.isCancelled else {
         return .cancelled(.cancelled)
+      }
+      if let expectedEventSequence, currentSequence() != expectedEventSequence {
+        return .cancelled(.eventSequenceChanged)
       }
       guard let snapshot = rewriter.currentSnapshot() else {
         continue
@@ -86,10 +102,15 @@ public final class CorrectionTransactionCoordinator {
       else {
         continue
       }
-      if boundary == .questionMark, attempt < verificationAttempts - 1 {
+      let requiresContinuationCheck = boundaryPolicy.requiresContinuationCheck(
+        boundary: locatedText.boundary
+      )
+      if boundary == .questionMark || requiresContinuationCheck,
+        attempt < locationAttempts - 1
+      {
         continue
       }
-      committedText = (snapshot, locatedText)
+      committedText = (snapshot, locatedText, requiresContinuationCheck)
       break
     }
     guard let committedText else {
@@ -105,9 +126,10 @@ public final class CorrectionTransactionCoordinator {
     let observedText = locatedText.text
     let boundaryText = locatedText.boundary
     guard
-      BoundarySafetyPolicy().permitsAutomaticCorrection(
+      boundaryPolicy.permitsAutomaticCorrection(
         boundary: boundaryText,
-        allowsNaturalQuestionMark: boundary == .questionMark
+        allowsNaturalQuestionMark: boundary == .questionMark,
+        hasSettledAmbiguousBoundary: committedText.settledAmbiguousBoundary
       )
     else {
       return .cancelled(.unsafeBoundary)
