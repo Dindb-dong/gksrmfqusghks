@@ -9,6 +9,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
   case alwaysConvert = "항상 변환"
   case shortcuts = "단축키"
   case learning = "학습"
+  case statistics = "통계"
   case about = "정보"
 
   var id: Self { self }
@@ -25,6 +26,7 @@ struct SettingsView: View {
   @State private var neverConvertToken = ""
   @State private var alwaysConvertToken = ""
   @State private var confirmsLearningReset = false
+  @State private var confirmsStatisticsReset = false
   @State private var showsApplicationPicker = false
 
   var body: some View {
@@ -55,6 +57,8 @@ struct SettingsView: View {
           shortcutSettings
         case .learning:
           learningSettings
+        case .statistics:
+          statisticsSettings
         case .about:
           aboutSettings
         }
@@ -514,6 +518,94 @@ struct SettingsView: View {
       Button("취소", role: .cancel) {}
     } message: {
       Text("단어 규칙과 사용자 앱 제외를 삭제합니다. 자동 교정과 권한 설정은 유지됩니다.")
+    }
+  }
+
+  @ViewBuilder
+  private var statisticsSettings: some View {
+    Group {
+      if model.statisticsStoreRecovered {
+        Section {
+          Label(
+            "손상된 통계 파일을 격리하고 빈 통계로 복구했습니다.",
+            systemImage: "exclamationmark.triangle"
+          )
+        }
+      }
+
+      if model.statisticsStorePermissionWarning {
+        Section {
+          Label(
+            "통계 파일 권한을 강화하지 못했습니다. 파일 권한을 확인하세요.",
+            systemImage: "lock.trianglebadge.exclamationmark"
+          )
+        }
+      }
+
+      Section("자동 교정 통계") {
+        LabeledContent("전체 자동 교정") {
+          Text("\(model.totalAutomaticCorrectionCount)회")
+            .monospacedDigit()
+        }
+        LabeledContent("교정된 단어 종류") {
+          Text("\(model.correctionStatistics.count)개")
+            .monospacedDigit()
+        }
+        Text("성공한 자동 교정의 단어 쌍과 누적 횟수만 이 Mac에 저장합니다. 주변 문장, 앱 이름, 시각, 원시 키 입력은 저장하지 않습니다.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+
+      Section("단어별 자동 교정") {
+        if model.correctionStatistics.isEmpty {
+          ContentUnavailableView(
+            "아직 자동 교정 없음",
+            systemImage: "chart.bar.xaxis",
+            description: Text("자동 교정이 성공하면 교정 전·후 단어와 횟수가 여기에 표시됩니다.")
+          )
+        } else {
+          ForEach(model.correctionStatistics) { entry in
+            HStack(spacing: 12) {
+              VStack(alignment: .leading, spacing: 3) {
+                Text(entry.replacement)
+                Text("\(entry.original) → \(entry.replacement)")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .textSelection(.enabled)
+              }
+              Spacer()
+              Text("\(entry.count)회")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("\(entry.count)회 자동 교정")
+            }
+          }
+        }
+      }
+
+      Section("데이터 관리") {
+        Button("자동 교정 통계 초기화", role: .destructive) {
+          confirmsStatisticsReset = true
+        }
+        .disabled(model.correctionStatistics.isEmpty)
+        if !model.statisticsMessage.isEmpty {
+          Text(model.statisticsMessage)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+      }
+    }
+    .confirmationDialog(
+      "자동 교정 통계를 초기화할까요?",
+      isPresented: $confirmsStatisticsReset,
+      titleVisibility: .visible
+    ) {
+      Button("자동 교정 통계 초기화", role: .destructive) {
+        model.resetCorrectionStatistics()
+      }
+      Button("취소", role: .cancel) {}
+    } message: {
+      Text("누적 횟수와 단어별 통계를 삭제합니다. 자동 교정 설정과 학습 규칙은 유지됩니다.")
     }
   }
 
