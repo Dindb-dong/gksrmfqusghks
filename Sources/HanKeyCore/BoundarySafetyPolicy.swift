@@ -1,19 +1,27 @@
 import Foundation
 
 public struct BoundarySafetyPolicy: Sendable {
-  private static let unsafeContinuationCharacters = CharacterSet(charactersIn: ".@/\\?")
+  private static let ambiguousContinuationCharacters = CharacterSet(charactersIn: ".@/\\?")
 
   public init() {}
 
   public func permitsAutomaticCorrection(
     boundary: String,
-    allowsNaturalQuestionMark: Bool = false
+    allowsNaturalQuestionMark: Bool = false,
+    hasSettledAmbiguousBoundary: Bool = false
   ) -> Bool {
     !boundary.unicodeScalars.contains {
       if allowsNaturalQuestionMark, $0 == "?" {
         return false
       }
-      return Self.unsafeContinuationCharacters.contains($0)
+      return Self.ambiguousContinuationCharacters.contains($0)
+        && !hasSettledAmbiguousBoundary
+    }
+  }
+
+  public func requiresContinuationCheck(boundary: String) -> Bool {
+    boundary.unicodeScalars.contains {
+      Self.ambiguousContinuationCharacters.contains($0)
     }
   }
 }

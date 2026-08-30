@@ -54,6 +54,7 @@ public enum CorrectionTransactionFailure: Equatable, Sendable {
   case cancelled
   case sourceUnavailable
   case sourceChanged
+  case eventSequenceChanged
   case focusChanged
   case applicationExcluded
   case selectionUnavailable

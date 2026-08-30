@@ -67,6 +67,16 @@ final class GlobalInputEventTapTests: XCTestCase {
     )
   }
 
+  func testShiftedQuoteIsAnAutomaticCorrectionBoundary() {
+    XCTAssertEqual(
+      KeyEventInterpreter.interpret(
+        keyCode: CGKeyCode(kVK_ANSI_Quote),
+        flags: .maskShift
+      ),
+      .boundary(.punctuation)
+    )
+  }
+
   func testEveryPhysicalSpecialSymbolKeyCompletesTheBufferedWord() {
     let directSymbolKeys = [
       kVK_ANSI_Grave, kVK_ANSI_Equal, kVK_ANSI_LeftBracket,

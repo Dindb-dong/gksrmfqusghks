@@ -158,12 +158,6 @@ final class AppModel {
     totalAutomaticCorrectionCount = correctionStatisticsStore.totalCorrectionCount
     statisticsStoreRecovered = correctionStatisticsStore.recoveredFromCorruption
     statisticsStorePermissionWarning = correctionStatisticsStore.permissionHardeningFailed
-    transactionCoordinator = CorrectionTransactionCoordinator(
-      inputSources: inputSourceController,
-      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
-        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
-      }
-    )
     manualCoordinator = ManualCorrectionCoordinator(
       inputSources: inputSourceController,
       isApplicationExcluded: { [weak learningStore] bundleIdentifier in
@@ -182,6 +176,15 @@ final class AppModel {
       }
     )
     self.observationRuntime = observationRuntime
+    transactionCoordinator = CorrectionTransactionCoordinator(
+      inputSources: inputSourceController,
+      isApplicationExcluded: { [weak learningStore] bundleIdentifier in
+        learningStore?.isApplicationExcluded(bundleIdentifier) ?? true
+      },
+      currentSequence: { [weak observationRuntime] in
+        observationRuntime?.eventSequence ?? UInt64.max
+      }
+    )
     terminalTransactionCoordinator = TerminalCorrectionCoordinator(
       inputSources: inputSourceController,
       currentSequence: { [weak observationRuntime] in
@@ -710,7 +713,8 @@ final class AppModel {
       let result = await transactionCoordinator.perform(
         proposal: proposal,
         boundary: boundary,
-        expectedFocus: focusIdentity
+        expectedFocus: focusIdentity,
+        expectedEventSequence: eventSequence
       )
       guard let self else {
         return
