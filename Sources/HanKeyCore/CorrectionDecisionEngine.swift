@@ -94,6 +94,8 @@ public struct CorrectionDecisionEngine: Sendable {
   }
 
   public func decide(_ request: CorrectionRequest) -> CorrectionDecision {
+    let candidate = convertedCandidate(for: request)
+
     switch safetyClassifier.classify(
       token: request.token,
       surface: request.surface,
@@ -101,7 +103,12 @@ public struct CorrectionDecisionEngine: Sendable {
       leadingCommandPrefix: request.leadingCommandPrefix
     ) {
     case .excluded(let reason):
-      return .noCorrection(.unsafe(reason))
+      guard
+        reason == .codeIdentifier,
+        permitsShiftedDubeolsikWord(request: request, candidate: candidate)
+      else {
+        return .noCorrection(.unsafe(reason))
+      }
     case .eligible:
       break
     }
@@ -110,7 +117,6 @@ public struct CorrectionDecisionEngine: Sendable {
       return .noCorrection(.explicitNever)
     }
 
-    let candidate = convertedCandidate(for: request)
     guard !candidate.isEmpty, candidate != request.token else {
       return .noCorrection(.noAlternative)
     }
@@ -213,6 +219,31 @@ public struct CorrectionDecisionEngine: Sendable {
     case .korean:
       return DubeolsikConverter.decomposeToQWERTY(request.token)
     }
+  }
+
+  private func permitsShiftedDubeolsikWord(
+    request: CorrectionRequest,
+    candidate: String
+  ) -> Bool {
+    guard
+      request.activeLanguage == .english,
+      request.lexiconEvidence.candidateIsKnown,
+      !candidate.isEmpty,
+      request.token.allSatisfy({ $0.isASCII && $0.isLetter })
+    else {
+      return false
+    }
+
+    let uppercaseLetters = request.token.filter(\.isUppercase)
+    let shiftedDubeolsikKeys: Set<Character> = ["Q", "W", "E", "R", "T", "O", "P"]
+    guard
+      !uppercaseLetters.isEmpty,
+      uppercaseLetters.allSatisfy(shiftedDubeolsikKeys.contains)
+    else {
+      return false
+    }
+
+    return candidate.unicodeScalars.allSatisfy { (0xAC00...0xD7A3).contains($0.value) }
   }
 
   private func strongKoreanToEnglishMismatch(
