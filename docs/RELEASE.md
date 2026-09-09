@@ -56,6 +56,7 @@ HANKEY_EXPECT_NOTARIZED=1 ./packaging/verify-release.sh
 - Semantic Versioning
 - `0.x`: 공개 pre-release
 - `1.0.0`: PRD release gate 충족
+- `1.0.1`: 구분자·로컬 통계·Shift 두벌식 판정 개선
 - detector asset revision은 app version과 함께 기록
 
 ## Sparkle feed
