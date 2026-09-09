@@ -1,5 +1,9 @@
 # 한글변환 (`gksrmfqusghks`)
 
+<p align="center">
+  <img src="Assets/AppIcon-1024.png" width="144" alt="한글변환 앱 아이콘">
+</p>
+
 한글변환은 한/영 입력 소스를 잘못 선택한 채 입력한 단어를 로컬에서 감지하고, 안전하다고 확신할 때만 복구한 뒤 다음 입력을 위한 macOS 입력 소스까지 전환하는 네이티브 메뉴 막대 앱입니다.
 
 ```text
@@ -8,6 +12,17 @@ gksrmffh  → 한글로
 ㅜㅐㅅ     → not
 /채ㅡㅔㅁㅊㅅ → /compact
 ```
+
+## 앱 화면
+
+<p align="center">
+  <img src="docs/images/settings-general.png" width="49%" alt="한글변환 일반 설정 화면">
+  <img src="docs/images/settings-statistics.png" width="49%" alt="한글변환 통계 화면">
+</p>
+
+<p align="center">
+  <img src="docs/images/menu-bar.png" width="320" alt="한글변환 메뉴 막대 메뉴">
+</p>
 
 ## 주요 기능
 

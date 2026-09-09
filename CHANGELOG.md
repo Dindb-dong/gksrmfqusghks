@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 — 2026-09-09
+
+- Add local-only aggregate correction statistics with per-word counts and reset controls.
+- Preserve every standard symbol boundary and safely handle delayed straight and smart quotes.
+- Recognize valid Korean words typed with shifted Dubeolsik keys without weakening code-identifier protection.
+- Add the app icon and current settings and menu-bar screenshots to the README.
+
 ## 1.0.0 — 2026-08-27
 
 - Local-only ABC↔2-Set Korean physical-key conversion with complete modern Hangul round trips.
