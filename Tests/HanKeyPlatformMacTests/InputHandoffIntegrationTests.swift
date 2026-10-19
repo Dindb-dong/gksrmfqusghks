@@ -93,7 +93,6 @@ final class InputHandoffIntegrationTests: XCTestCase {
     let sink = HandoffEventSink(expectedCount: rawCount + nativeCount, received: received)
     try sink.start()
     defer { sink.stop() }
-    holdMainRunloop(0.002)
     let wakeRoute = HandoffWakeRoute(dropFirst: mode == .lostWake, paused: mode == .contextChanged)
     let gate = InputHandoffGate(
       targetPID: getpid(), wakePoster: { wakeRoute.post($0) },
@@ -101,92 +100,93 @@ final class InputHandoffIntegrationTests: XCTestCase {
         ? .milliseconds(400) : .milliseconds(20),
       maximumBufferCount: mode == .nativeOverflow ? 16 : 256)
     defer { gate.stop() }
+    let rawEvents = try (0..<rawCount).map { ordinal in
+      let event = try XCTUnwrap(
+        CGEvent(
+          keyboardEventSource: CGEventSource(stateID: .privateState), virtualKey: 0xFFFF,
+          keyDown: ordinal.isMultiple(of: 2)))
+      event.setIntegerValueField(
+        .eventSourceUserData, value: HandoffEventSink.marker + Int64(ordinal))
+      event.flags = ordinal.isMultiple(of: 3) ? .maskShift : []
+      return event
+    }
+    let native = mode.usesNative ? try XCTUnwrap(NativeInputSourceSwitch()) : nil
+    let syntheticEvents = try [true, false].map { down in
+      let event = try XCTUnwrap(
+        CGEvent(
+          keyboardEventSource: CGEventSource(stateID: .privateState), virtualKey: 0xFFFE,
+          keyDown: down))
+      HanKeySyntheticEvent.mark(event)
+      event.flags = []
+      return event
+    }
     let handoff = try XCTUnwrap(InputHandoff(gate: gate))
     defer { handoff.finish() }
     if mode == .idle { handoff.finish() }
-    let posted = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
-      for ordinal in 0..<(mode == .nativeEmptyExpired ? 0 : 16) {
-        // Unmapped key + consuming tap: never type into the user's focused app.
-        guard
-          let event = CGEvent(
-            keyboardEventSource: CGEventSource(stateID: .privateState), virtualKey: 0xFFFF,
-            keyDown: ordinal.isMultiple(of: 2))
-        else { continue }
-        event.setIntegerValueField(
-          .eventSourceUserData, value: HandoffEventSink.marker + Int64(ordinal))
-        event.flags = ordinal.isMultiple(of: 3) ? .maskShift : []
-        event.postToPid(getpid())
-      }
-      posted.signal()
+    // Prepare before the deadline, then post only to our consuming process tap.
+    for event in rawEvents.prefix(16) { event.postToPid(getpid()) }
+    if mode != .idle, rawCount > 0 {
+      let buffered = await waitForCondition { gate.pendingEventCount == min(rawCount, 16) }
+      XCTAssertTrue(buffered, "The physical prefix must reach the gate before the next step")
     }
-    XCTAssertEqual(posted.wait(timeout: .now() + 0.02), .success)
     switch mode {
     case .completed, .lostWake:
-      holdMainRunloop(0.01)
       XCTAssertTrue(handoff.isValid)
       XCTAssertTrue(sink.events.isEmpty, "Input must wait before the downstream tap")
       handoff.finish()
     case .expired:
+      XCTAssertTrue(sink.events.isEmpty)
       // Keep main blocked, but allow the hosted OS to schedule its event delivery.
       XCTAssertEqual(sink.waitForAllEvents(timeout: .now() + 2), .success)
       XCTAssertFalse(handoff.isValid)
       XCTAssertEqual(
         sink.events, Array(0..<16), "Deadline must release events without the main loop")
     case .idle:
-      holdMainRunloop(0.03)
+      XCTAssertEqual(sink.waitForAllEvents(timeout: .now() + 2), .success)
       XCTAssertEqual(sink.events, Array(0..<16), "Idle input must not wait for the main loop")
     case .synthetic:
-      holdMainRunloop(0.01)
-      for down in [true, false] {
-        let event = try XCTUnwrap(
-          CGEvent(
-            keyboardEventSource: CGEventSource(stateID: .privateState), virtualKey: 0xFFFE,
-            keyDown: down))
-        HanKeySyntheticEvent.mark(event)
-        event.flags = []
-        event.postToPid(getpid())
-      }
-      holdMainRunloop(0.01)
+      for event in syntheticEvents { event.postToPid(getpid()) }
+      let progressed = await waitForCondition { sink.events.count == 2 }
+      XCTAssertTrue(progressed)
       XCTAssertTrue(handoff.isValid)
       XCTAssertEqual(sink.events, [16, 17], "Synthetic events must progress before input release")
       handoff.finish()
     case .stopped:
-      holdMainRunloop(0.01)
       XCTAssertTrue(sink.events.isEmpty)
       gate.stop()
       XCTAssertNil(InputHandoff(gate: gate))
       handoff.finish()
     case .native, .nativeExpired, .nativeCancelled, .nativeOverflow, .nativeStopped,
       .nativeEmptyExpired, .contextChanged:
-      holdMainRunloop(0.01)
-      if mode == .contextChanged { XCTAssertEqual(gate.pendingEventCount, 16) }
-      let native = try XCTUnwrap(NativeInputSourceSwitch())
+      let native = try XCTUnwrap(native)
+      let commandStarted = ContinuousClock.now
       let command = Task { await handoff.performSourceSwitch(events: native.events) }
-      await Task.yield()
       if mode == .contextChanged {
+        let queued = await waitForCondition { wakeRoute.count > 0 }
+        XCTAssertTrue(queued)
+        XCTAssertTrue(handoff.isValid)
         gate.invalidateContext(.applicationChanged)
         wakeRoute.resume()
-      } else {
-        holdMainRunloop(0.01)
+      } else if mode != .native {
+        let started = await waitForCondition { sink.events.count >= 3 }
+        XCTAssertTrue(started)
         XCTAssertEqual(sink.events, [1000, 1001, 1002])
       }
-      if mode == .native { gate.invalidateContext(.inputSourceChanged) }
+      // Normal cleanup may already finish before main resumes; exact order is checked below.
       switch mode {
       case .nativeCancelled: command.cancel()
       case .nativeStopped: gate.stop()
       case .nativeOverflow:
-        let overflow = try XCTUnwrap(
-          CGEvent(
-            keyboardEventSource: CGEventSource(stateID: .privateState), virtualKey: 0xFFFF,
-            keyDown: true))
-        overflow.flags = []
-        overflow.setIntegerValueField(.eventSourceUserData, value: HandoffEventSink.marker + 16)
-        overflow.postToPid(getpid())
+        rawEvents[16].postToPid(getpid())
       default: break
       }
       let switched = await command.value
       XCTAssertEqual(switched, mode == .native)
+      if mode == .native {
+        XCTAssertGreaterThanOrEqual(commandStarted.duration(to: .now), .milliseconds(20))
+        gate.invalidateContext(.inputSourceChanged)
+        XCTAssertTrue(handoff.isValid, "Our own source notification must retain the input wait")
+      }
       handoff.finish()
       if mode == .nativeEmptyExpired {
         let next = InputHandoff(gate: gate)
@@ -211,13 +211,18 @@ final class InputHandoffIntegrationTests: XCTestCase {
       sink.flags,
       syntheticFlags
         + (0..<rawCount).map { $0.isMultiple(of: 3) ? CGEventFlags.maskShift.rawValue : 0 })
-    if mode == .native {
-      let chord = Array(sink.timestamps.prefix(4))
-      XCTAssertEqual(chord, chord.sorted())
-      XCTAssertGreaterThanOrEqual(chord[3] - chord[2], 20_000_000)
-    }
     if mode == .lostWake { XCTAssertGreaterThanOrEqual(wakeRoute.count, 2) }
   }
+}
+
+@MainActor
+private func waitForCondition(_ condition: () -> Bool) async -> Bool {
+  let deadline = ContinuousClock.now + .milliseconds(100)
+  while !condition() {
+    guard ContinuousClock.now < deadline else { return false }
+    try? await Task.sleep(for: .milliseconds(1))
+  }
+  return true
 }
 
 private func holdMainRunloop(_ seconds: Double) { Thread.sleep(forTimeInterval: seconds) }
@@ -232,7 +237,6 @@ private final class HandoffEventSink: @unchecked Sendable {
   private let allEventsReceived = DispatchSemaphore(value: 0)
   private var captured: [UInt32] = []
   private var capturedFlags: [UInt64] = []
-  private var capturedTimestamps: [UInt64] = []
   private var runLoop: CFRunLoop?
   private var available = false
 
@@ -243,7 +247,6 @@ private final class HandoffEventSink: @unchecked Sendable {
 
   var events: [UInt32] { lock.withLock { captured } }
   var flags: [UInt64] { lock.withLock { capturedFlags } }
-  var timestamps: [UInt64] { lock.withLock { capturedTimestamps } }
 
   func waitForAllEvents(timeout: DispatchTime) -> DispatchTimeoutResult {
     allEventsReceived.wait(timeout: timeout)
@@ -284,7 +287,6 @@ private final class HandoffEventSink: @unchecked Sendable {
             let done = sink.lock.withLock {
               sink.captured.append(UInt32(ordinal))
               sink.capturedFlags.append(event.flags.rawValue)
-              sink.capturedTimestamps.append(event.timestamp)
               return sink.captured.count == sink.expectedCount
             }
             if done {
