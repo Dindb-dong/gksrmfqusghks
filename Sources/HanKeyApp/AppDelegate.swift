@@ -1,4 +1,5 @@
 import AppKit
+import HanKeyPlatformMac
 import SwiftUI
 
 @MainActor
@@ -6,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var onboardingWindowController: NSWindowController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    InputHandoffDiagnostics.startLocalTestResponder()
     AppModel.shared.startSoftwareUpdates()
     #if DEBUG
       if ProcessInfo.processInfo.arguments.contains("--dark-appearance") {
@@ -21,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
     showInitialOnboarding()
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    InputHandoff.shutdown()
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {

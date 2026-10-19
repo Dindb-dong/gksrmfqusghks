@@ -27,7 +27,7 @@
 
 1. 텔레메트리와 콘텐츠 네트워크 전송을 포함하지 않습니다. 런타임 네트워크는 격리된 Sparkle 업데이트 피드와 사용자가 승인한 업데이트 다운로드로만 제한합니다.
 2. 원시 이벤트와 판정 중인 현재 단어는 메모리에만 두고 최소 수명과 최대 길이를 적용합니다. 반복 교정 거부 의도는 현재 포커스에 한해 최대 32개 토큰 시퀀스만 유지합니다. 교체가 검증된 뒤에만 전·후 단어 쌍과 누적 횟수를 로컬 통계로 기록합니다.
-3. Secure Keyboard Entry 또는 secure field를 감지하면 버퍼를 즉시 폐기합니다.
+3. Secure Keyboard Entry 또는 secure field를 감지하면 분석용 버퍼를 즉시 폐기하고 보류 교정을 취소합니다. 입력 전달용 휘발성 handoff 큐는 내용 분석 없이 수정키 정리 후 한 번 해제하며, 보안 상태에서 새 교정 handoff를 시작하지 않습니다.
 4. 포커스·PID·selection을 교정 직전에 재검증합니다.
 5. 자동 교정은 위험 패턴과 앱에서 fail closed 합니다.
 6. 합성 이벤트에는 process sentinel을 붙이고 외부 이벤트와 구분합니다.
@@ -42,6 +42,7 @@
 | Data | Memory | Disk | Network |
 |---|---:|---:|---:|
 | Current physical key token buffer | Yes, bounded | Never | Never |
+| Unforwarded input handoff events | Volatile, max 256, 200ms deadline | Never | Never |
 | Repeated-intent physical token sequences | Yes, max 32 in current focus | Never | Never |
 | Focused text/current word | Transient when required | Never | Never |
 | App exclusion bundle IDs | Yes | Yes | Never |
@@ -75,3 +76,5 @@
 - “모든 비밀번호 필드를 완벽하게 식별한다”고 주장하지 않습니다.
 - 비 sandboxed Developer ID 앱의 콘텐츠 네트워크 불가를 OS가 강제한다고 주장하지 않습니다. 대신 Sparkle 외 직접 네트워크 코드 부재, 공개 소스, 정적·동적 검증 증거를 제공합니다.
 - 접근성 권한이 단순하거나 낮은 위험이라고 축소 설명하지 않습니다.
+
+Local-test builds may answer an explicit local distributed-notification status request with only the last handoff stage and terminal outcome enum. This volatile scalar diagnostic contains no text, events, source identifiers, PID/app identity, timestamps, counts or history. It performs no mutation and has no disk or network sink; public builds do not register the responder.

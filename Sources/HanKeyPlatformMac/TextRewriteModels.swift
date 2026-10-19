@@ -72,18 +72,125 @@ public enum CorrectionTransactionResult: Equatable, Sendable {
 }
 
 @MainActor
+public final class PreparedTextReplacement {
+  private var operation: ((@MainActor () -> Bool) -> Bool)?
+
+  public init(_ operation: @escaping (@MainActor () -> Bool) -> Bool) {
+    self.operation = operation
+  }
+
+  public func perform(isStillValid: @MainActor () -> Bool) -> Bool {
+    guard let operation else { return false }
+    self.operation = nil
+    let accepted = operation(isStillValid)
+    if accepted {
+      InputHandoffDiagnostics.reached(.textPosted)
+    } else {
+      InputHandoffDiagnostics.ended(.replacementRejected)
+    }
+    return accepted
+  }
+}
+
+@MainActor
 public protocol FocusedTextRewriting: AnyObject {
   func currentSnapshot() -> FocusedTextSnapshot?
   func text(in range: TextUTF16Range, matching snapshot: FocusedTextSnapshot) -> String?
+  func prepareReplacement(
+    range: TextUTF16Range, with text: String, expectedText: String,
+    matching snapshot: FocusedTextSnapshot
+  ) -> PreparedTextReplacement?
   func replace(
     range: TextUTF16Range,
     with text: String,
-    matching snapshot: FocusedTextSnapshot
+    matching snapshot: FocusedTextSnapshot,
+    isStillValid: @MainActor () -> Bool
   ) -> Bool
 }
 
 @MainActor
 public protocol InputSourceControlling: AnyObject {
   func currentSource() -> InputSourceSnapshot?
+  func prepareSelection(language: TokenLanguage) -> PreparedInputSourceSelection?
   func select(language: TokenLanguage) -> InputSourceSnapshot?
+  func selectAndConfirm(
+    language: TokenLanguage, isStillValid: @MainActor () -> Bool
+  ) async -> InputSourceSnapshot?
+}
+
+@MainActor
+public final class PreparedInputSourceSelection {
+  private var operation:
+    (
+      @MainActor (@MainActor () -> Bool, (any InputHandoffControlling)?) async ->
+        InputSourceSnapshot?
+    )?
+
+  public init(
+    _ operation:
+      @escaping @MainActor (@MainActor () -> Bool, (any InputHandoffControlling)?) async ->
+      InputSourceSnapshot?
+  ) {
+    self.operation = operation
+  }
+
+  public func perform(
+    isStillValid: @MainActor () -> Bool, handoff: (any InputHandoffControlling)? = nil
+  ) async -> InputSourceSnapshot? {
+    guard let operation else { return nil }
+    self.operation = nil
+    return await operation(isStillValid, handoff)
+  }
+}
+
+extension InputSourceControlling {
+  public func prepareSelection(language: TokenLanguage) -> PreparedInputSourceSelection? {
+    PreparedInputSourceSelection { isStillValid, handoff in
+      guard handoff?.canStartSourceSwitch ?? true else { return nil }
+      return await self.selectAndConfirm(language: language, isStillValid: isStillValid)
+    }
+  }
+}
+
+// Web accessibility caches acknowledge accepted mutations asynchronously.
+extension FocusedTextRewriting {
+  public func prepareReplacement(
+    range: TextUTF16Range, with text: String, expectedText: String,
+    matching snapshot: FocusedTextSnapshot
+  ) -> PreparedTextReplacement? {
+    guard self.text(in: range, matching: snapshot) == expectedText else { return nil }
+    return PreparedTextReplacement { isStillValid in
+      self.replace(range: range, with: text, matching: snapshot, isStillValid: isStillValid)
+    }
+  }
+
+  func waitsForReplacement(
+    _ text: String, in range: TextUTF16Range, identity: FocusedElementIdentity,
+    isStillValid: @MainActor () -> Bool, attempts: Int = 4,
+    delay: @MainActor () async -> Void = {
+      try? await Task.sleep(for: .milliseconds(4))
+    }
+  ) async -> Bool {
+    var verified = false
+    defer { if !verified { InputHandoffDiagnostics.endIfPending(.replacementUnverified) } }
+    for attempt in 0..<attempts {
+      guard !Task.isCancelled, isStillValid() else { return false }
+      guard let snapshot = currentSnapshot(), snapshot.identity == identity,
+        !Task.isCancelled, isStillValid()
+      else { return false }
+      let caret = TextUTF16Range(location: range.location + text.utf16.count, length: 0)
+      if snapshot.selection == caret {
+        let inserted = TextUTF16Range(location: range.location, length: text.utf16.count)
+        guard let observed = self.text(in: inserted, matching: snapshot) else { return false }
+        if observed == text {
+          verified = !Task.isCancelled && isStillValid()
+          if verified { InputHandoffDiagnostics.reached(.textVerified) }
+          return verified
+        }
+      }
+      if attempt + 1 < attempts { await delay() }
+    }
+    return false
+  }
+
 }

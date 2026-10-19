@@ -747,6 +747,9 @@ final class AppModel {
         lastCorrectionRecord = record
         pendingNeverRecord = nil
         correctionActivity = .sourceSwitchFailed
+      case .cancelled(.replacementRejected), .cancelled(.replacementUnverified):
+        lastCorrectionRecord = nil
+        correctionActivity = .actionUnavailable
       case .cancelled:
         correctionActivity = .idle
       }

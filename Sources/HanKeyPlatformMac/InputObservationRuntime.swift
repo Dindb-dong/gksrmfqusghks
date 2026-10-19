@@ -46,13 +46,14 @@ public final class InputObservationRuntime {
   private var focusTracker = FocusIdentityTracker()
   private var currentFocusIdentity: FocusedElementIdentity?
   private var currentSurface: InputSurface = .unsupported
-  public private(set) var eventSequence: UInt64 = 0
-  private lazy var eventTap = GlobalInputEventTap { [weak self] observation in
+  public var eventSequence: UInt64 { eventTap.eventSequence }
+  private lazy var eventTap = GlobalInputEventTap { [weak self] observation, sequence in
     MainActor.assumeIsolated {
-      self?.receive(observation)
+      self?.receive(observation, sequence: sequence)
     }
   }
   private lazy var contextObserver = ContextInvalidationObserver { [weak self] reason in
+    InputHandoff.cancelActive(for: reason)
     Task { @MainActor [weak self] in
       self?.invalidate(reason)
     }
@@ -93,6 +94,7 @@ public final class InputObservationRuntime {
   }
 
   public func stop() {
+    InputHandoff.cancelActive(for: .stopped)
     eventTap.stop()
     contextObserver.stop()
     _ = buffer.handle(.invalidate(.stopped), at: currentTimestamp())
@@ -102,8 +104,7 @@ public final class InputObservationRuntime {
     transition(to: .stopped)
   }
 
-  private func receive(_ observation: GlobalInputObservation) {
-    eventSequence &+= 1
+  private func receive(_ observation: GlobalInputObservation, sequence: UInt64) {
     let timestamp: UInt64
     switch observation {
     case .tapRecovered:
@@ -138,7 +139,7 @@ public final class InputObservationRuntime {
             boundary: boundary,
             focusIdentity: currentFocusIdentity,
             surface: currentSurface,
-            eventSequence: eventSequence
+            eventSequence: sequence
           )
         )
       }
@@ -174,6 +175,7 @@ public final class InputObservationRuntime {
   private func refreshProtection(at timestamp: UInt64) -> Bool {
     let permissions = PlatformCapabilities.currentPermissionSnapshot()
     guard permissions.hasRequiredPermissions else {
+      InputHandoff.cancelActive(for: .stopped)
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
@@ -190,6 +192,7 @@ public final class InputObservationRuntime {
     )
 
     if mustProtect {
+      InputHandoff.cancelActive(for: .secureInput)
       _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
@@ -202,6 +205,7 @@ public final class InputObservationRuntime {
       _ = buffer.handle(.protectionChanged(isProtected: false), at: timestamp)
     }
     guard focusedContext.state == .editable, let identity = focusedContext.identity else {
+      InputHandoff.cancelActive(for: .focusChanged)
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
@@ -209,6 +213,7 @@ public final class InputObservationRuntime {
       return false
     }
     if focusTracker.update(identity) {
+      InputHandoff.cancelActive(for: .focusChanged)
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
     }
     currentFocusIdentity = identity

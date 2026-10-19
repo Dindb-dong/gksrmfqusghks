@@ -4,6 +4,37 @@ import XCTest
 @testable import HanKeyPlatformMac
 
 final class FocusedElementSecurityInspectorTests: XCTestCase {
+  func testAbsentOptionalSubroleIsNotAnIPCFailure() {
+    XCTAssertTrue(
+      FocusedElementSecurityInspector.isSecurityReadReliable(role: .success, subrole: .noValue))
+    XCTAssertFalse(
+      FocusedElementSecurityInspector.isSecurityReadReliable(role: .noValue, subrole: .noValue))
+    XCTAssertEqual(
+      FocusedElementSecurityInspector.classify(
+        AccessibilityElementDescriptor(role: kAXTextAreaRole as String, subrole: nil)), .editable)
+    XCTAssertEqual(
+      FocusedElementSecurityInspector.classify(
+        AccessibilityElementDescriptor(
+          role: kAXTextFieldRole as String, subrole: kAXSecureTextFieldSubrole as String)), .secure)
+  }
+
+  func testTimedOutSecurityAttributesFailClosed() {
+    XCTAssertTrue(
+      FocusedElementSecurityInspector.isSecurityReadReliable(role: .success, subrole: .success))
+    XCTAssertTrue(
+      FocusedElementSecurityInspector.isSecurityReadReliable(
+        role: .success, subrole: .attributeUnsupported))
+    XCTAssertFalse(
+      FocusedElementSecurityInspector.isSecurityReadReliable(
+        role: .success, subrole: .cannotComplete))
+    XCTAssertFalse(
+      FocusedElementSecurityInspector.isSecurityReadReliable(
+        role: .cannotComplete, subrole: .success))
+    XCTAssertFalse(
+      FocusedElementSecurityInspector.isSecurityReadReliable(
+        role: .success, subrole: .invalidUIElement))
+  }
+
   func testSecureSubroleAlwaysWins() {
     XCTAssertEqual(
       FocusedElementSecurityInspector.classify(

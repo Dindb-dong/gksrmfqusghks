@@ -11,6 +11,7 @@ public final class CorrectionTransactionCoordinator {
   private let inputSources: any InputSourceControlling
   private let isApplicationExcluded: ExclusionProvider
   private let currentSequence: SequenceProvider
+  private let makeInputHandoff: @MainActor () -> (any InputHandoffControlling)?
   private let delay: Delay
   private let verificationAttempts: Int
   private let punctuationSettlingAttempts: Int
@@ -22,6 +23,9 @@ public final class CorrectionTransactionCoordinator {
     inputSources: any InputSourceControlling = InputSourceController(),
     isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
     currentSequence: @escaping SequenceProvider = { 0 },
+    makeInputHandoff: @escaping @MainActor () -> (any InputHandoffControlling)? = {
+      InputHandoff()
+    },
     verificationAttempts: Int = 4,
     punctuationSettlingAttempts: Int = 12,
     delay: @escaping Delay = {
@@ -38,6 +42,7 @@ public final class CorrectionTransactionCoordinator {
     self.inputSources = inputSources
     self.isApplicationExcluded = isApplicationExcluded
     self.currentSequence = currentSequence
+    self.makeInputHandoff = makeInputHandoff
     self.verificationAttempts = verificationAttempts
     self.punctuationSettlingAttempts = punctuationSettlingAttempts
     self.delay = delay
@@ -53,7 +58,11 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.busy)
     }
     isBusy = true
-    defer { isBusy = false }
+    InputHandoffDiagnostics.begin()
+    defer {
+      isBusy = false
+      InputHandoffDiagnostics.endIfPending(.cancelled)
+    }
 
     guard let sourceBefore = inputSources.currentSource() else {
       return .cancelled(.sourceUnavailable)
@@ -135,28 +144,45 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.unsafeBoundary)
     }
     let replacementWithBoundary = proposal.replacement + boundaryText
+    guard let sourceSelection = inputSources.prepareSelection(language: proposal.targetLanguage)
+    else { return .cancelled(.sourceUnavailable) }
     guard
-      rewriter.replace(
-        range: replacedRange,
-        with: replacementWithBoundary,
+      let prepared = rewriter.prepareReplacement(
+        range: replacedRange, with: replacementWithBoundary, expectedText: observedText,
         matching: snapshot
       )
+    else { return .cancelled(.replacementRejected) }
+    guard !Task.isCancelled,
+      expectedEventSequence.map({ currentSequence() == $0 }) ?? true
+    else { return .cancelled(.eventSequenceChanged) }
+    guard let handoff = makeInputHandoff() else { return .cancelled(.cancelled) }
+    defer { handoff.finish() }
+    let mayMutate: @MainActor () -> Bool = {
+      !Task.isCancelled && handoff.isValid
+        && (expectedEventSequence.map { self.currentSequence() == $0 } ?? true)
+    }
+    guard
+      prepared.perform(isStillValid: {
+        self.inputSources.currentSource() == sourceBefore && mayMutate()
+      })
     else {
+      InputHandoffDiagnostics.ended(.replacementRejected)
       return .cancelled(.replacementRejected)
     }
+    InputHandoffDiagnostics.reached(.textPosted)
 
-    let expectedCaret = replacedRange.location + replacementWithBoundary.utf16.count
-    guard await verifyCaret(identity: expectedFocus, location: expectedCaret) else {
-      await rollbackIfPresent(
-        identity: expectedFocus,
-        originalWithBoundary: observedText,
-        replacementWithBoundary: replacementWithBoundary,
-        boundaryText: boundaryText,
-        replacedRange: replacedRange
+    guard
+      await rewriter.waitsForReplacement(
+        replacementWithBoundary, in: replacedRange, identity: expectedFocus,
+        isStillValid: mayMutate, attempts: verificationAttempts, delay: delay
       )
+    else {
+      InputHandoffDiagnostics.ended(.replacementUnverified)
+      // An unverified write may still be in flight. Never launch another write over it.
       return .cancelled(.replacementUnverified)
     }
 
+    InputHandoffDiagnostics.reached(.textVerified)
     let provisionalRecord = CorrectionTransactionRecord(
       focusIdentity: expectedFocus,
       originalWithBoundary: observedText,
@@ -165,9 +191,26 @@ public final class CorrectionTransactionCoordinator {
       sourceBefore: sourceBefore,
       sourceAfter: nil
     )
-    guard let sourceAfter = inputSources.select(language: proposal.targetLanguage) else {
+    guard mayMutate(), inputSources.currentSource() == sourceBefore else {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
+    guard handoff.canStartSourceSwitch else {
+      InputHandoffDiagnostics.ended(.budgetBeforeNative)
+      return .cancelled(.sourceSwitchFailed(provisionalRecord))
+    }
+    let selectedSource = await sourceSelection.perform(
+      isStillValid: mayMutate, handoff: handoff)
+    guard
+      await rewriter.waitsForReplacement(
+        replacementWithBoundary, in: replacedRange, identity: expectedFocus,
+        isStillValid: mayMutate, attempts: verificationAttempts, delay: delay
+      )
+    else { return .cancelled(.replacementUnverified) }
+    guard mayMutate(), let sourceAfter = selectedSource,
+      inputSources.currentSource() == sourceAfter
+    else { return .cancelled(.sourceSwitchFailed(provisionalRecord)) }
+    InputHandoffDiagnostics.reached(.finalVerified)
+    InputHandoffDiagnostics.ended(.completed)
     return .corrected(
       CorrectionTransactionRecord(
         focusIdentity: expectedFocus,
@@ -178,52 +221,6 @@ public final class CorrectionTransactionCoordinator {
         sourceAfter: sourceAfter
       )
     )
-  }
-
-  private func verifyCaret(identity: FocusedElementIdentity, location: Int) async -> Bool {
-    for _ in 0..<verificationAttempts {
-      await delay()
-      guard let snapshot = rewriter.currentSnapshot(), snapshot.identity == identity else {
-        return false
-      }
-      if snapshot.selection == TextUTF16Range(location: location, length: 0) {
-        return true
-      }
-    }
-    return false
-  }
-
-  private func rollbackIfPresent(
-    identity: FocusedElementIdentity,
-    originalWithBoundary: String,
-    replacementWithBoundary: String,
-    boundaryText: String,
-    replacedRange: TextUTF16Range
-  ) async {
-    guard
-      let snapshot = rewriter.currentSnapshot(),
-      snapshot.identity == identity,
-      snapshot.selection.length == 0,
-      snapshot.selection.location > replacedRange.location,
-      snapshot.selection.location
-        <= replacedRange.location + replacementWithBoundary.utf16.count
-    else {
-      return
-    }
-    let range = TextUTF16Range(
-      location: replacedRange.location,
-      length: snapshot.selection.location - replacedRange.location
-    )
-    guard
-      let currentText = rewriter.text(in: range, matching: snapshot),
-      !currentText.isEmpty,
-      replacementWithBoundary.hasPrefix(currentText)
-        || (!boundaryText.isEmpty && currentText == boundaryText)
-    else {
-      return
-    }
-    _ = rewriter.replace(range: range, with: originalWithBoundary, matching: snapshot)
-    await delay()
   }
 
   private func validatedBoundary(

@@ -20,11 +20,12 @@ public enum HanKeySyntheticEvent {
 }
 
 public final class GlobalInputEventTap: @unchecked Sendable {
-  public typealias Handler = @Sendable (GlobalInputObservation) -> Void
+  public typealias Handler = @Sendable (GlobalInputObservation, UInt64) -> Void
 
   private let handler: Handler
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
+  public private(set) var eventSequence: UInt64 = 0
 
   public init(handler: @escaping Handler) {
     self.handler = handler
@@ -40,7 +41,9 @@ public final class GlobalInputEventTap: @unchecked Sendable {
       return true
     }
 
-    let events: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+    let events: [CGEventType] = [
+      .keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown,
+    ]
     let mask = events.reduce(CGEventMask(0)) { result, type in
       result | (CGEventMask(1) << type.rawValue)
     }
@@ -49,7 +52,7 @@ public final class GlobalInputEventTap: @unchecked Sendable {
     guard
       let tap = CGEvent.tapCreate(
         tap: .cgSessionEventTap,
-        place: .headInsertEventTap,
+        place: .tailAppendEventTap,
         options: .listenOnly,
         eventsOfInterest: mask,
         callback: Self.callback,
@@ -95,11 +98,26 @@ public final class GlobalInputEventTap: @unchecked Sendable {
       if let tap = owner.eventTap {
         CGEvent.tapEnable(tap: tap, enable: true)
       }
+      owner.eventSequence &+= 1
       owner.deliver(.tapRecovered)
       return Unmanaged.passUnretained(event)
     }
 
     guard !HanKeySyntheticEvent.isMarked(event) else {
+      return Unmanaged.passUnretained(event)
+    }
+
+    let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+    if KeyEventInterpreter.advancesGeneration(type: type, keyCode: keyCode) {
+      owner.eventSequence &+= 1
+    }
+    if type == .flagsChanged {
+      if keyCode == CGKeyCode(kVK_CapsLock) {
+        owner.deliver(
+          .buffer(.invalidate(.inputSourceChanged), timestampNanoseconds: event.timestamp))
+      } else if KeyEventInterpreter.advancesGeneration(type: type, keyCode: keyCode) {
+        owner.deliver(.buffer(.invalidate(.modifiedCommand), timestampNanoseconds: event.timestamp))
+      }
       return Unmanaged.passUnretained(event)
     }
 
@@ -117,13 +135,21 @@ public final class GlobalInputEventTap: @unchecked Sendable {
   }
 
   private func deliver(_ observation: GlobalInputObservation) {
+    let sequence = eventSequence
     DispatchQueue.main.async { [handler] in
-      handler(observation)
+      handler(observation, sequence)
     }
   }
 }
 
 enum KeyEventInterpreter {
+  static func advancesGeneration(type: CGEventType, keyCode: CGKeyCode) -> Bool {
+    if type == .keyUp { return false }
+    // Releasing Shift after '?' or a quote must not cancel boundary settling.
+    return type != .flagsChanged
+      || (keyCode != CGKeyCode(kVK_Shift) && keyCode != CGKeyCode(kVK_RightShift))
+  }
+
   private static let letters: [CGKeyCode: Character] = [
     CGKeyCode(kVK_ANSI_A): "a", CGKeyCode(kVK_ANSI_B): "b", CGKeyCode(kVK_ANSI_C): "c",
     CGKeyCode(kVK_ANSI_D): "d", CGKeyCode(kVK_ANSI_E): "e", CGKeyCode(kVK_ANSI_F): "f",

@@ -86,9 +86,15 @@ public enum FocusedElementSecurityInspector {
   }
 
   static func context(for element: AXUIElement) -> FocusedElementContext {
+    let role = readStringAttribute(kAXRoleAttribute as CFString, element: element)
+    let subrole = readStringAttribute(kAXSubroleAttribute as CFString, element: element)
+    guard isSecurityReadReliable(role: role.status, subrole: subrole.status) else {
+      return FocusedElementContext(
+        state: .unavailable, identity: nil, surface: .unsupported, bundleIdentifier: nil)
+    }
     let descriptor = AccessibilityElementDescriptor(
-      role: stringAttribute(kAXRoleAttribute as CFString, element: element),
-      subrole: stringAttribute(kAXSubroleAttribute as CFString, element: element),
+      role: role.value,
+      subrole: subrole.value,
       identifier: stringAttribute(kAXIdentifierAttribute as CFString, element: element),
       roleDescription: stringAttribute(kAXRoleDescriptionAttribute as CFString, element: element)
     )
@@ -135,6 +141,19 @@ public enum FocusedElementSecurityInspector {
       return .editable
     }
     return descriptor.role == nil ? .unavailable : .nonEditable
+  }
+
+  static func isSecurityReadReliable(role: AXError, subrole: AXError) -> Bool {
+    role == .success
+      && (subrole == .success || subrole == .attributeUnsupported || subrole == .noValue)
+  }
+
+  private static func readStringAttribute(
+    _ attribute: CFString, element: AXUIElement
+  ) -> (value: String?, status: AXError) {
+    var value: CFTypeRef?
+    let status = AXUIElementCopyAttributeValue(element, attribute, &value)
+    return (status == .success ? value as? String : nil, status)
   }
 
   private static func stringAttribute(_ attribute: CFString, element: AXUIElement) -> String? {

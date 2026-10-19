@@ -27,35 +27,24 @@ public enum CorrectionUndoResult: Equatable, Sendable {
 
 @MainActor
 public final class ManualCorrectionCoordinator {
-  public typealias Delay = @MainActor @Sendable () async -> Void
   public typealias ExclusionProvider = @MainActor (String?) -> Bool
 
   private let rewriter: any FocusedTextRewriting
   private let inputSources: any InputSourceControlling
   private let isApplicationExcluded: ExclusionProvider
-  private let delay: Delay
-  private let verificationAttempts: Int
+  private let makeInputHandoff: @MainActor () -> (any InputHandoffControlling)?
   private var isBusy = false
 
   public init(
     rewriter: any FocusedTextRewriting = FocusedTextRewriter(),
     inputSources: any InputSourceControlling = InputSourceController(),
     isApplicationExcluded: @escaping ExclusionProvider = { _ in false },
-    verificationAttempts: Int = 4,
-    delay: @escaping Delay = {
-      await withCheckedContinuation { continuation in
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(8)) {
-          continuation.resume()
-        }
-      }
-    }
+    makeInputHandoff: @escaping @MainActor () -> (any InputHandoffControlling)? = { InputHandoff() }
   ) {
-    precondition(verificationAttempts > 0)
     self.rewriter = rewriter
     self.inputSources = inputSources
     self.isApplicationExcluded = isApplicationExcluded
-    self.verificationAttempts = verificationAttempts
-    self.delay = delay
+    self.makeInputHandoff = makeInputHandoff
   }
 
   public func convertSelectionOrLastWord() async -> ManualCorrectionResult {
@@ -63,7 +52,11 @@ public final class ManualCorrectionCoordinator {
       return .cancelled(.busy)
     }
     isBusy = true
-    defer { isBusy = false }
+    InputHandoffDiagnostics.begin()
+    defer {
+      isBusy = false
+      InputHandoffDiagnostics.endIfPending(.cancelled)
+    }
 
     guard let sourceBefore = inputSources.currentSource() else {
       return .cancelled(.sourceUnavailable)
@@ -78,20 +71,29 @@ public final class ManualCorrectionCoordinator {
     guard let conversion = converted(target.text) else {
       return .cancelled(.unsupportedText)
     }
+    guard let sourceSelection = inputSources.prepareSelection(language: conversion.targetLanguage)
+    else { return .cancelled(.sourceUnavailable) }
     guard
-      rewriter.replace(
-        range: target.range,
-        with: conversion.text,
-        matching: snapshot
+      let prepared = rewriter.prepareReplacement(
+        range: target.range, with: conversion.text, expectedText: target.text, matching: snapshot
       )
+    else { return .cancelled(.replacementRejected) }
+    guard let handoff = makeInputHandoff() else { return .cancelled(.replacementRejected) }
+    defer { handoff.finish() }
+    guard
+      prepared.perform(isStillValid: {
+        !Task.isCancelled && self.inputSources.currentSource() == sourceBefore && handoff.isValid
+      })
     else {
       return .cancelled(.replacementRejected)
     }
 
-    let expectedCaret = target.range.location + conversion.text.utf16.count
-    guard await verifyCaret(identity: snapshot.identity, location: expectedCaret) else {
-      return .cancelled(.replacementUnverified)
-    }
+    guard
+      await rewriter.waitsForReplacement(
+        conversion.text, in: target.range, identity: snapshot.identity,
+        isStillValid: { handoff.isValid }
+      )
+    else { return .cancelled(.replacementUnverified) }
 
     let provisionalRecord = CorrectionTransactionRecord(
       focusIdentity: snapshot.identity,
@@ -101,9 +103,27 @@ public final class ManualCorrectionCoordinator {
       sourceBefore: sourceBefore,
       sourceAfter: nil
     )
-    guard let sourceAfter = inputSources.select(language: conversion.targetLanguage) else {
+    guard handoff.isValid, inputSources.currentSource() == sourceBefore else {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
+    guard handoff.canStartSourceSwitch else {
+      InputHandoffDiagnostics.ended(.budgetBeforeNative)
+      return .cancelled(.sourceSwitchFailed(provisionalRecord))
+    }
+    let selectedSource = await sourceSelection.perform(
+      isStillValid: { !Task.isCancelled && handoff.isValid },
+      handoff: handoff)
+    guard
+      await rewriter.waitsForReplacement(
+        conversion.text, in: target.range, identity: snapshot.identity,
+        isStillValid: { handoff.isValid }
+      )
+    else { return .cancelled(.replacementUnverified) }
+    guard handoff.isValid, let sourceAfter = selectedSource,
+      inputSources.currentSource() == sourceAfter
+    else { return .cancelled(.sourceSwitchFailed(provisionalRecord)) }
+    InputHandoffDiagnostics.reached(.finalVerified)
+    InputHandoffDiagnostics.ended(.completed)
     return .corrected(
       CorrectionTransactionRecord(
         focusIdentity: snapshot.identity,
@@ -121,7 +141,11 @@ public final class ManualCorrectionCoordinator {
       return .unavailable
     }
     isBusy = true
-    defer { isBusy = false }
+    InputHandoffDiagnostics.begin()
+    defer {
+      isBusy = false
+      InputHandoffDiagnostics.endIfPending(.cancelled)
+    }
 
     guard
       let snapshot = rewriter.currentSnapshot(),
@@ -141,21 +165,46 @@ public final class ManualCorrectionCoordinator {
       return .contextChanged
     }
     guard
-      rewriter.replace(
-        range: currentRange,
-        with: record.originalWithBoundary,
-        matching: snapshot
+      let sourceSelection = inputSources.prepareSelection(language: record.sourceBefore.language)
+    else { return .sourceSwitchFailed }
+    guard
+      let prepared = rewriter.prepareReplacement(
+        range: currentRange, with: record.originalWithBoundary,
+        expectedText: record.replacementWithBoundary, matching: snapshot
       )
+    else { return .replacementRejected }
+    guard let handoff = makeInputHandoff() else { return .replacementRejected }
+    defer { handoff.finish() }
+    guard
+      prepared.perform(isStillValid: { !Task.isCancelled && handoff.isValid })
     else {
       return .replacementRejected
     }
-    let expectedCaret = currentRange.location + record.originalWithBoundary.utf16.count
-    guard await verifyCaret(identity: record.focusIdentity, location: expectedCaret) else {
-      return .replacementUnverified
-    }
-    guard inputSources.select(language: record.sourceBefore.language) != nil else {
+    guard
+      await rewriter.waitsForReplacement(
+        record.originalWithBoundary, in: currentRange, identity: record.focusIdentity,
+        isStillValid: { handoff.isValid }
+      )
+    else { return .replacementUnverified }
+    guard handoff.isValid else { return .sourceSwitchFailed }
+    guard handoff.canStartSourceSwitch else {
+      InputHandoffDiagnostics.ended(.budgetBeforeNative)
       return .sourceSwitchFailed
     }
+    let selectedSource = await sourceSelection.perform(
+      isStillValid: { !Task.isCancelled && handoff.isValid },
+      handoff: handoff)
+    guard
+      await rewriter.waitsForReplacement(
+        record.originalWithBoundary, in: currentRange, identity: record.focusIdentity,
+        isStillValid: { handoff.isValid }
+      )
+    else { return .replacementUnverified }
+    guard handoff.isValid, let source = selectedSource,
+      inputSources.currentSource() == source
+    else { return .sourceSwitchFailed }
+    InputHandoffDiagnostics.reached(.finalVerified)
+    InputHandoffDiagnostics.ended(.completed)
     return .undone
   }
 
@@ -215,19 +264,6 @@ public final class ManualCorrectionCoordinator {
     }
     let replacement = DubeolsikConverter.compose(text)
     return replacement != text ? (replacement, .korean) : nil
-  }
-
-  private func verifyCaret(identity: FocusedElementIdentity, location: Int) async -> Bool {
-    for _ in 0..<verificationAttempts {
-      await delay()
-      guard let snapshot = rewriter.currentSnapshot(), snapshot.identity == identity else {
-        return false
-      }
-      if snapshot.selection == TextUTF16Range(location: location, length: 0) {
-        return true
-      }
-    }
-    return false
   }
 
   private func isHangul(_ scalar: UInt32) -> Bool {

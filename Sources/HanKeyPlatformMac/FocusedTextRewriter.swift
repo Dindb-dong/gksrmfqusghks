@@ -1,5 +1,6 @@
+import AppKit
 import ApplicationServices
-import CoreGraphics
+import Carbon.HIToolbox
 
 @MainActor
 public final class FocusedTextRewriter: FocusedTextRewriting {
@@ -19,7 +20,8 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     return FocusedTextSnapshot(
       identity: identity,
       selection: selection,
-      bundleIdentifier: FocusedElementSecurityInspector.context(for: element).bundleIdentifier
+      bundleIdentifier: NSRunningApplication(processIdentifier: identity.processID)?
+        .bundleIdentifier
     )
   }
 
@@ -30,6 +32,10 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     guard let element = matchingElement(snapshot.identity) else {
       return nil
     }
+    return rangedText(in: range, element: element)
+  }
+
+  private func rangedText(in range: TextUTF16Range, element: AXUIElement) -> String? {
     var cfRange = CFRange(location: range.location, length: range.length)
     guard let rangeValue = AXValueCreate(.cfRange, &cfRange) else {
       return nil
@@ -49,19 +55,33 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
   }
 
   public func replace(
+    range: TextUTF16Range, with text: String, matching snapshot: FocusedTextSnapshot,
+    isStillValid: @MainActor () -> Bool
+  ) -> Bool {
+    guard let original = self.text(in: range, matching: snapshot) else { return false }
+    return prepareReplacement(range: range, with: text, expectedText: original, matching: snapshot)?
+      .perform(isStillValid: isStillValid) ?? false
+  }
+
+  public func prepareReplacement(
     range: TextUTF16Range,
     with text: String,
+    expectedText: String,
     matching snapshot: FocusedTextSnapshot
-  ) -> Bool {
-    guard let element = matchingElement(snapshot.identity) else {
-      return false
+  ) -> PreparedTextReplacement? {
+    guard !Task.isCancelled, !IsSecureEventInputEnabled(),
+      let element = matchingElement(snapshot.identity),
+      selectedRange(of: element) == snapshot.selection,
+      rangedText(in: range, element: element) == expectedText
+    else {
+      return nil
     }
     var cfRange = CFRange(location: range.location, length: range.length)
     guard
       let rangeValue = AXValueCreate(.cfRange, &cfRange),
       let source = CGEventSource(stateID: .combinedSessionState)
     else {
-      return false
+      return nil
     }
 
     let segments = UnicodeEventText.segments(text)
@@ -90,23 +110,33 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
       return (keyDown, keyUp)
     }
     guard !events.isEmpty, events.count == segments.count else {
-      return false
+      return nil
     }
-    guard
-      AXUIElementSetAttributeValue(
-        element,
-        kAXSelectedTextRangeAttribute as CFString,
-        rangeValue
-      ) == .success
-    else {
-      return false
-    }
+    return PreparedTextReplacement { isStillValid in
+      // Keep selection and dispatch contiguous, as in the working 1.0.1 transport.
+      guard !Task.isCancelled, !IsSecureEventInputEnabled(),
+        self.matchingElement(snapshot.identity) != nil,
+        self.selectedRange(of: element) == snapshot.selection,
+        self.rangedText(in: range, element: element) == expectedText,
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == snapshot.identity.processID,
+        !IsSecureEventInputEnabled(), isStillValid()
+      else { return false }
+      guard
+        AXUIElementSetAttributeValue(
+          element,
+          kAXSelectedTextRangeAttribute as CFString,
+          rangeValue
+        ) == .success
+      else {
+        return false
+      }
 
-    for (keyDown, keyUp) in events {
-      keyDown.postToPid(snapshot.identity.processID)
-      keyUp.postToPid(snapshot.identity.processID)
+      for (keyDown, keyUp) in events {
+        keyDown.postToPid(snapshot.identity.processID)
+        keyUp.postToPid(snapshot.identity.processID)
+      }
+      return true
     }
-    return true
   }
 
   private func matchingElement(_ identity: FocusedElementIdentity) -> AXUIElement? {
@@ -118,11 +148,14 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
   }
 
   private func focusedEditableElement() -> AXUIElement? {
-    let systemWide = AXUIElementCreateSystemWide()
+    guard !IsSecureEventInputEnabled() else { return nil }
+    guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+    let application = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetMessagingTimeout(application, 0.01)
     var value: CFTypeRef?
     guard
       AXUIElementCopyAttributeValue(
-        systemWide,
+        application,
         kAXFocusedUIElementAttribute as CFString,
         &value
       ) == .success,
@@ -131,7 +164,11 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
       return nil
     }
     let element = unsafeDowncast(value, to: AXUIElement.self)
+    AXUIElementSetMessagingTimeout(element, 0.01)
     let context = FocusedElementSecurityInspector.context(for: element)
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
+      return nil
+    }
     return context.state == .editable && context.surface == .standardText ? element : nil
   }
 
@@ -163,6 +200,7 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
   }
 }
 
+// Keep the working character-sized Unicode transport for standard and opt-in terminal input.
 enum UnicodeEventText {
   static func segments(_ text: String) -> [String] {
     text.map(String.init)
