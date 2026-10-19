@@ -6,6 +6,22 @@ import XCTest
 @testable import HanKeyPlatformMac
 
 final class GlobalInputEventTapTests: XCTestCase {
+  func testShiftReleaseAndKeyUpDoNotCancelSettlingButNewKeysAndCapsLockDo() {
+    XCTAssertFalse(
+      KeyEventInterpreter.advancesGeneration(type: .flagsChanged, keyCode: CGKeyCode(kVK_Shift)))
+    XCTAssertFalse(
+      KeyEventInterpreter.advancesGeneration(
+        type: .flagsChanged, keyCode: CGKeyCode(kVK_RightShift)))
+    XCTAssertFalse(
+      KeyEventInterpreter.advancesGeneration(type: .keyUp, keyCode: CGKeyCode(kVK_ANSI_Slash)))
+    XCTAssertTrue(
+      KeyEventInterpreter.advancesGeneration(type: .keyDown, keyCode: CGKeyCode(kVK_ANSI_A)))
+    XCTAssertTrue(
+      KeyEventInterpreter.advancesGeneration(type: .flagsChanged, keyCode: CGKeyCode(kVK_CapsLock)))
+    XCTAssertTrue(
+      KeyEventInterpreter.advancesGeneration(type: .flagsChanged, keyCode: CGKeyCode(kVK_Command)))
+  }
+
   func testInterpretsPhysicalLettersAndShift() throws {
     XCTAssertEqual(
       KeyEventInterpreter.interpret(keyCode: CGKeyCode(kVK_ANSI_G), flags: []),

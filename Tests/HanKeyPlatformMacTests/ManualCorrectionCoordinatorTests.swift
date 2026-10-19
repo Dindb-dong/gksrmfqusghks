@@ -92,14 +92,78 @@ final class ManualCorrectionCoordinatorTests: XCTestCase {
       rewriter: rewriter,
       inputSources: sources,
       isApplicationExcluded: { $0 == "com.example.PrivateEditor" },
-      verificationAttempts: 1,
-      delay: {}
+      makeInputHandoff: { TestInputHandoff() }
     )
 
     let result = await coordinator.convertSelectionOrLastWord()
 
     XCTAssertEqual(result, .cancelled(.selectionUnavailable))
     XCTAssertEqual(rewriter.replaceCount, 0)
+  }
+
+  func testExpiredHandoffDuringVerificationDoesNotSwitchAndAlwaysFinishes() async {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmffh",
+      selection: TextUTF16Range(location: 8, length: 0), identity: identity)
+    let sources = ManualFakeSources(language: .english)
+    let handoff = TestInputHandoff()
+    rewriter.onReplace = { handoff.isValid = false }
+    let coordinator = ManualCorrectionCoordinator(
+      rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff })
+    let result = await coordinator.convertSelectionOrLastWord()
+    guard case .cancelled(.sourceSwitchFailed) = result else {
+      return XCTFail("Expected handoff failure")
+    }
+    XCTAssertEqual(sources.current?.language, .english)
+    XCTAssertEqual(handoff.finishCount, 1)
+  }
+
+  func testUndoExpiredHandoffDoesNotSwitchSourceAndAlwaysFinishes() async {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmffh",
+      selection: TextUTF16Range(location: 8, length: 0), identity: identity)
+    let sources = ManualFakeSources(language: .english)
+    let first = makeCoordinator(rewriter: rewriter, sources: sources)
+    guard case .corrected(let record) = await first.convertSelectionOrLastWord() else {
+      return XCTFail("Expected initial conversion")
+    }
+    let handoff = TestInputHandoff()
+    rewriter.onReplace = { handoff.isValid = false }
+    let coordinator = ManualCorrectionCoordinator(
+      rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff })
+    let result = await coordinator.undo(record)
+    XCTAssertEqual(result, .sourceSwitchFailed)
+    XCTAssertEqual(sources.current?.language, .korean)
+    XCTAssertEqual(handoff.finishCount, 1)
+  }
+
+  func testSourceSelectionSideEffectsAreUnverifiedEvenWhenSelectionFails() async {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmffh",
+      selection: TextUTF16Range(location: 8, length: 0), identity: identity)
+    let sources = ManualFakeSources(language: .english)
+    sources.onSelect = { rewriter.document = "다른말" }
+    sources.canSelect = false
+    let result = await makeCoordinator(rewriter: rewriter, sources: sources)
+      .convertSelectionOrLastWord()
+    XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(rewriter.replaceCount, 1)
+  }
+
+  func testUndoSourceSelectionSideEffectsAreUnverified() async {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmffh",
+      selection: TextUTF16Range(location: 8, length: 0), identity: identity)
+    let sources = ManualFakeSources(language: .english)
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+    guard case .corrected(let record) = await coordinator.convertSelectionOrLastWord() else {
+      return XCTFail("Expected initial conversion")
+    }
+    sources.onSelect = { rewriter.document = "different" }
+    sources.canSelect = false
+    let result = await coordinator.undo(record)
+    XCTAssertEqual(result, .replacementUnverified)
+    XCTAssertEqual(rewriter.replaceCount, 2)
   }
 
   private func makeCoordinator(
@@ -109,8 +173,7 @@ final class ManualCorrectionCoordinatorTests: XCTestCase {
     ManualCorrectionCoordinator(
       rewriter: rewriter,
       inputSources: sources,
-      verificationAttempts: 1,
-      delay: {}
+      makeInputHandoff: { TestInputHandoff() }
     )
   }
 }
@@ -122,6 +185,7 @@ private final class ManualFakeRewriter: FocusedTextRewriting {
   var identity: FocusedElementIdentity
   var bundleIdentifier: String?
   private(set) var replaceCount = 0
+  var onReplace: (() -> Void)?
 
   init(
     document: String,
@@ -153,8 +217,10 @@ private final class ManualFakeRewriter: FocusedTextRewriting {
   func replace(
     range: TextUTF16Range,
     with text: String,
-    matching snapshot: FocusedTextSnapshot
+    matching snapshot: FocusedTextSnapshot,
+    isStillValid: @MainActor () -> Bool
   ) -> Bool {
+    guard isStillValid(), snapshot.selection == selection else { return false }
     replaceCount += 1
     guard snapshot.identity == identity else { return false }
     let value = NSMutableString(string: document)
@@ -162,6 +228,7 @@ private final class ManualFakeRewriter: FocusedTextRewriting {
     value.replaceCharacters(in: NSRange(location: range.location, length: range.length), with: text)
     document = value as String
     selection = TextUTF16Range(location: range.location + text.utf16.count, length: 0)
+    onReplace?()
     return true
   }
 }
@@ -169,6 +236,8 @@ private final class ManualFakeRewriter: FocusedTextRewriting {
 @MainActor
 private final class ManualFakeSources: InputSourceControlling {
   var current: InputSourceSnapshot?
+  var onSelect: (() -> Void)?
+  var canSelect = true
 
   init(language: TokenLanguage) {
     current = InputSourceSnapshot(
@@ -180,6 +249,8 @@ private final class ManualFakeSources: InputSourceControlling {
   func currentSource() -> InputSourceSnapshot? { current }
 
   func select(language: TokenLanguage) -> InputSourceSnapshot? {
+    onSelect?()
+    guard canSelect else { return nil }
     let selected = InputSourceSnapshot(
       identifier: InputSourceController.identifier(for: language),
       language: language

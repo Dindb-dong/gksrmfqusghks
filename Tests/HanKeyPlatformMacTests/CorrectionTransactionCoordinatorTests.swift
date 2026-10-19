@@ -58,6 +58,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     let coordinator = CorrectionTransactionCoordinator(
       rewriter: rewriter,
       inputSources: sources,
+      makeInputHandoff: { TestInputHandoff() },
       verificationAttempts: 4,
       delay: {
         delayCount += 1
@@ -88,6 +89,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     let coordinator = CorrectionTransactionCoordinator(
       rewriter: rewriter,
       inputSources: sources,
+      makeInputHandoff: { TestInputHandoff() },
       verificationAttempts: 4,
       delay: {
         sources.current = InputSourceSnapshot(
@@ -150,6 +152,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     let coordinator = CorrectionTransactionCoordinator(
       rewriter: rewriter,
       inputSources: sources,
+      makeInputHandoff: { TestInputHandoff() },
       verificationAttempts: 4,
       delay: {
         delayCount += 1
@@ -291,6 +294,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       let coordinator = CorrectionTransactionCoordinator(
         rewriter: rewriter,
         inputSources: sources,
+        makeInputHandoff: { TestInputHandoff() },
         verificationAttempts: 4,
         punctuationSettlingAttempts: 12,
         delay: {
@@ -326,6 +330,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       rewriter: rewriter,
       inputSources: sources,
       currentSequence: { sequence },
+      makeInputHandoff: { TestInputHandoff() },
       verificationAttempts: 4,
       punctuationSettlingAttempts: 12,
       delay: { sequence = 11 }
@@ -357,6 +362,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       let coordinator = CorrectionTransactionCoordinator(
         rewriter: rewriter,
         inputSources: sources,
+        makeInputHandoff: { TestInputHandoff() },
         verificationAttempts: 4,
         punctuationSettlingAttempts: 12,
         delay: {
@@ -467,6 +473,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       rewriter: rewriter,
       inputSources: sources,
       isApplicationExcluded: { $0 == "com.example.PrivateEditor" },
+      makeInputHandoff: { TestInputHandoff() },
       verificationAttempts: 1,
       delay: {}
     )
@@ -518,7 +525,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertNil(record.sourceAfter)
   }
 
-  func testUnverifiedReplacementRollsBackWhenReplacementIsStillAdjacent() async {
+  func testUnverifiedReplacementDoesNotLaunchAnotherWrite() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
     rewriter.verificationFailuresRemaining = 1
     let sources = FakeInputSources(currentLanguage: .english)
@@ -531,12 +538,12 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     )
 
     XCTAssertEqual(result, .cancelled(.replacementUnverified))
-    XCTAssertEqual(rewriter.document, "gksrmffh ")
-    XCTAssertEqual(rewriter.replaceCount, 2)
+    XCTAssertEqual(rewriter.document, "한글로 ")
+    XCTAssertEqual(rewriter.replaceCount, 1)
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
-  func testPartiallyInsertedReplacementRollsBackFromOriginalRange() async {
+  func testPartiallyInsertedReplacementDoesNotLaunchAnotherWrite() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
     rewriter.firstReplacementOverride = " "
     let sources = FakeInputSources(currentLanguage: .english)
@@ -549,8 +556,8 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     )
 
     XCTAssertEqual(result, .cancelled(.replacementUnverified))
-    XCTAssertEqual(rewriter.document, "gksrmffh ")
-    XCTAssertEqual(rewriter.replaceCount, 2)
+    XCTAssertEqual(rewriter.document, " ")
+    XCTAssertEqual(rewriter.replaceCount, 1)
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
@@ -572,6 +579,113 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
+  func testWrongTextAtExpectedCaretIsNotSuccessful() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    rewriter.firstReplacementOverride = "다른말 "
+    let sources = FakeInputSources(currentLanguage: .english)
+    let result = await makeCoordinator(rewriter: rewriter, sources: sources).perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity
+    )
+    XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(rewriter.replaceCount, 1)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
+  func testActivityDuringFinalTextReadCancelsBeforeMutation() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    var sequence: UInt64 = 1
+    rewriter.onRead = { sequence = 2 }
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources, currentSequence: { sequence },
+      makeInputHandoff: { TestInputHandoff() }, delay: {}
+    )
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity, expectedEventSequence: 1
+    )
+    XCTAssertEqual(result, .cancelled(.eventSequenceChanged))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
+  func testUnavailableHandoffCancelsBeforeMutation() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources, makeInputHandoff: { nil }, delay: {}
+    )
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity
+    )
+    XCTAssertEqual(result, .cancelled(.cancelled))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+  }
+
+  func testSourceReadbackMismatchRetainsFailureRecord() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    sources.updatesCurrentSource = false
+    let result = await makeCoordinator(rewriter: rewriter, sources: sources).perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity
+    )
+    guard case .cancelled(.sourceSwitchFailed(let record)) = result else {
+      return XCTFail("Expected failed source verification")
+    }
+    XCTAssertNil(record.sourceAfter)
+    XCTAssertEqual(rewriter.document, "한글로 ")
+    XCTAssertEqual(rewriter.replaceCount, 1)
+  }
+
+  func testHandoffInvalidatedDuringVerificationDoesNotSwitchSource() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let handoff = TestInputHandoff()
+    rewriter.onReplace = { rewriter.onRead = { handoff.isValid = false } }
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff }, delay: {})
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity)
+    guard case .cancelled(.sourceSwitchFailed) = result else {
+      return XCTFail("Expected interrupted handoff")
+    }
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+    XCTAssertEqual(handoff.finishCount, 1)
+  }
+
+  func testHandoffInvalidatedInsideSourceSelectionIsNotSuccessful() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    let handoff = TestInputHandoff()
+    sources.onSelect = { handoff.isValid = false }
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff }, delay: {})
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity)
+    guard case .cancelled(.sourceSwitchFailed) = result else {
+      return XCTFail("Expected interrupted handoff")
+    }
+    XCTAssertEqual(handoff.finishCount, 1)
+  }
+
+  func testSourceActivationChangingTextCannotCountAsCorrection() async {
+    let rewriter = FakeTextRewriter(document: "ㅡ먀ㅜ ", caret: 4, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .korean)
+    sources.onSelect = { rewriter.document = "mmain " }
+    sources.updatesCurrentSource = false
+    let coordinator = makeCoordinator(rewriter: rewriter, sources: sources)
+    let result = await coordinator.perform(
+      proposal: proposal(original: "ㅡ먀ㅜ", replacement: "main", target: .english),
+      boundary: .space, expectedFocus: identity)
+    XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(rewriter.replaceCount, 1)
+  }
+
   private func makeCoordinator(
     rewriter: FakeTextRewriter,
     sources: FakeInputSources
@@ -579,6 +693,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     CorrectionTransactionCoordinator(
       rewriter: rewriter,
       inputSources: sources,
+      makeInputHandoff: { TestInputHandoff() },
       verificationAttempts: 1,
       delay: {}
     )
@@ -609,6 +724,8 @@ private final class FakeTextRewriter: FocusedTextRewriting {
   private(set) var replaceCount = 0
   var verificationFailuresRemaining = 0
   var firstReplacementOverride: String?
+  var onRead: (() -> Void)?
+  var onReplace: (() -> Void)?
   private var replacementPerformed = false
 
   init(
@@ -641,6 +758,7 @@ private final class FakeTextRewriter: FocusedTextRewriting {
 
   func text(in range: TextUTF16Range, matching snapshot: FocusedTextSnapshot) -> String? {
     readCount += 1
+    onRead?()
     guard snapshot.identity == identity else {
       return nil
     }
@@ -654,8 +772,10 @@ private final class FakeTextRewriter: FocusedTextRewriting {
   func replace(
     range: TextUTF16Range,
     with text: String,
-    matching snapshot: FocusedTextSnapshot
+    matching snapshot: FocusedTextSnapshot,
+    isStillValid: @MainActor () -> Bool
   ) -> Bool {
+    guard isStillValid() else { return false }
     replaceCount += 1
     guard snapshot.identity == identity else {
       return false
@@ -672,6 +792,7 @@ private final class FakeTextRewriter: FocusedTextRewriting {
     document = value as String
     selection = TextUTF16Range(location: range.location + replacement.utf16.count, length: 0)
     replacementPerformed = true
+    onReplace?()
     return true
   }
 }
@@ -680,6 +801,8 @@ private final class FakeTextRewriter: FocusedTextRewriting {
 private final class FakeInputSources: InputSourceControlling {
   var current: InputSourceSnapshot?
   let canSelect: Bool
+  var updatesCurrentSource = true
+  var onSelect: (() -> Void)?
   private(set) var selectedLanguages: [TokenLanguage] = []
 
   init(currentLanguage: TokenLanguage, canSelect: Bool = true) {
@@ -696,6 +819,7 @@ private final class FakeInputSources: InputSourceControlling {
 
   func select(language: TokenLanguage) -> InputSourceSnapshot? {
     selectedLanguages.append(language)
+    onSelect?()
     guard canSelect else {
       return nil
     }
@@ -703,7 +827,7 @@ private final class FakeInputSources: InputSourceControlling {
       identifier: InputSourceController.identifier(for: language),
       language: language
     )
-    current = snapshot
+    if updatesCurrentSource { current = snapshot }
     return snapshot
   }
 }

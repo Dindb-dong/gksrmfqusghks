@@ -46,10 +46,10 @@ public final class InputObservationRuntime {
   private var focusTracker = FocusIdentityTracker()
   private var currentFocusIdentity: FocusedElementIdentity?
   private var currentSurface: InputSurface = .unsupported
-  public private(set) var eventSequence: UInt64 = 0
-  private lazy var eventTap = GlobalInputEventTap { [weak self] observation in
+  public var eventSequence: UInt64 { eventTap.eventSequence }
+  private lazy var eventTap = GlobalInputEventTap { [weak self] observation, sequence in
     MainActor.assumeIsolated {
-      self?.receive(observation)
+      self?.receive(observation, sequence: sequence)
     }
   }
   private lazy var contextObserver = ContextInvalidationObserver { [weak self] reason in
@@ -102,8 +102,7 @@ public final class InputObservationRuntime {
     transition(to: .stopped)
   }
 
-  private func receive(_ observation: GlobalInputObservation) {
-    eventSequence &+= 1
+  private func receive(_ observation: GlobalInputObservation, sequence: UInt64) {
     let timestamp: UInt64
     switch observation {
     case .tapRecovered:
@@ -138,7 +137,7 @@ public final class InputObservationRuntime {
             boundary: boundary,
             focusIdentity: currentFocusIdentity,
             surface: currentSurface,
-            eventSequence: eventSequence
+            eventSequence: sequence
           )
         )
       }

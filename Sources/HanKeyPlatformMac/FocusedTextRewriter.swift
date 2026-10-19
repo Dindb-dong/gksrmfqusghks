@@ -1,5 +1,5 @@
 import ApplicationServices
-import CoreGraphics
+import Carbon.HIToolbox
 
 @MainActor
 public final class FocusedTextRewriter: FocusedTextRewriting {
@@ -51,62 +51,45 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
   public func replace(
     range: TextUTF16Range,
     with text: String,
-    matching snapshot: FocusedTextSnapshot
+    matching snapshot: FocusedTextSnapshot,
+    isStillValid: @MainActor () -> Bool
   ) -> Bool {
-    guard let element = matchingElement(snapshot.identity) else {
-      return false
-    }
-    var cfRange = CFRange(location: range.location, length: range.length)
-    guard
-      let rangeValue = AXValueCreate(.cfRange, &cfRange),
-      let source = CGEventSource(stateID: .combinedSessionState)
+    guard isStillValid(), !IsSecureEventInputEnabled(),
+      let element = matchingElement(snapshot.identity),
+      selectedRange(of: element) == snapshot.selection
     else {
       return false
     }
-
-    let segments = UnicodeEventText.segments(text)
-    let events = segments.compactMap { segment -> (CGEvent, CGEvent)? in
-      guard
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-      else {
-        return nil
-      }
-
-      let utf16 = Array(segment.utf16)
-      utf16.withUnsafeBufferPointer { buffer in
-        guard let baseAddress = buffer.baseAddress else { return }
-        keyDown.keyboardSetUnicodeString(
-          stringLength: buffer.count,
-          unicodeString: baseAddress
-        )
-        keyUp.keyboardSetUnicodeString(
-          stringLength: buffer.count,
-          unicodeString: baseAddress
-        )
-      }
-      HanKeySyntheticEvent.mark(keyDown)
-      HanKeySyntheticEvent.mark(keyUp)
-      return (keyDown, keyUp)
-    }
-    guard !events.isEmpty, events.count == segments.count else {
-      return false
-    }
+    var settable = DarwinBoolean(false)
     guard
-      AXUIElementSetAttributeValue(
-        element,
-        kAXSelectedTextRangeAttribute as CFString,
-        rangeValue
-      ) == .success
+      AXUIElementIsAttributeSettable(
+        element, kAXSelectedTextAttribute as CFString, &settable
+      ) == .success, settable.boolValue
     else {
       return false
     }
-
-    for (keyDown, keyUp) in events {
-      keyDown.postToPid(snapshot.identity.processID)
-      keyUp.postToPid(snapshot.identity.processID)
-    }
-    return true
+    guard let original = self.text(in: range, matching: snapshot)
+    else { return false }
+    return SelectedTextMutation.perform(
+      expectedSelection: snapshot.selection, targetRange: range,
+      isStillValid: {
+        !IsSecureEventInputEnabled() && self.matchingElement(snapshot.identity) != nil
+          && isStillValid()
+      },
+      selection: { self.selectedRange(of: element) },
+      select: { selection in
+        var value = CFRange(location: selection.location, length: selection.length)
+        guard let range = AXValueCreate(.cfRange, &value) else { return .failure }
+        return AXUIElementSetAttributeValue(
+          element, kAXSelectedTextRangeAttribute as CFString, range)
+      },
+      originalIsUnchanged: { self.text(in: range, matching: snapshot) == original },
+      write: {
+        // A single AX mutation avoids feeding replacement letters through the active IME.
+        AXUIElementSetAttributeValue(
+          element, kAXSelectedTextAttribute as CFString, text as CFString)
+      }
+    )
   }
 
   private func matchingElement(_ identity: FocusedElementIdentity) -> AXUIElement? {
@@ -118,7 +101,9 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
   }
 
   private func focusedEditableElement() -> AXUIElement? {
+    guard !IsSecureEventInputEnabled() else { return nil }
     let systemWide = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(systemWide, 0.01)
     var value: CFTypeRef?
     guard
       AXUIElementCopyAttributeValue(
@@ -131,6 +116,7 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
       return nil
     }
     let element = unsafeDowncast(value, to: AXUIElement.self)
+    AXUIElementSetMessagingTimeout(element, 0.01)
     let context = FocusedElementSecurityInspector.context(for: element)
     return context.state == .editable && context.surface == .standardText ? element : nil
   }
@@ -163,8 +149,36 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
   }
 }
 
+// The opt-in terminal adapter still needs character-sized synthetic events.
 enum UnicodeEventText {
   static func segments(_ text: String) -> [String] {
     text.map(String.init)
+  }
+}
+
+// Selection restoration is allowed only after a definite rejection, never an ambiguous write timeout.
+enum SelectedTextMutation {
+  @MainActor
+  static func perform(
+    expectedSelection: TextUTF16Range, targetRange: TextUTF16Range,
+    isStillValid: () -> Bool, selection: () -> TextUTF16Range?,
+    select: (TextUTF16Range) -> AXError,
+    originalIsUnchanged: () -> Bool, write: () -> AXError
+  ) -> Bool {
+    guard selection() == expectedSelection, isStillValid(),
+      select(targetRange) == .success
+    else { return false }
+    guard selection() == targetRange, isStillValid() else { return false }
+    let result = write()
+    if result == .success { return true }
+    let definiteRejection =
+      result == .attributeUnsupported || result == .notImplemented
+      || result == .illegalArgument
+    if definiteRejection, isStillValid(), selection() == targetRange,
+      originalIsUnchanged(), selection() == targetRange, isStillValid()
+    {
+      _ = select(expectedSelection)
+    }
+    return false
   }
 }

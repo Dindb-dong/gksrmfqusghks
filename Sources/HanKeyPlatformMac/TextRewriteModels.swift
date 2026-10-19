@@ -78,7 +78,8 @@ public protocol FocusedTextRewriting: AnyObject {
   func replace(
     range: TextUTF16Range,
     with text: String,
-    matching snapshot: FocusedTextSnapshot
+    matching snapshot: FocusedTextSnapshot,
+    isStillValid: @MainActor () -> Bool
   ) -> Bool
 }
 
@@ -86,4 +87,17 @@ public protocol FocusedTextRewriting: AnyObject {
 public protocol InputSourceControlling: AnyObject {
   func currentSource() -> InputSourceSnapshot?
   func select(language: TokenLanguage) -> InputSourceSnapshot?
+}
+
+// These reads must stay synchronous with the mutation and source handoff.
+extension FocusedTextRewriting {
+  func verifiesReplacement(
+    _ text: String, in range: TextUTF16Range, identity: FocusedElementIdentity
+  ) -> Bool {
+    guard let snapshot = currentSnapshot(), snapshot.identity == identity,
+      snapshot.selection == TextUTF16Range(location: range.location + text.utf16.count, length: 0)
+    else { return false }
+    let insertedRange = TextUTF16Range(location: range.location, length: text.utf16.count)
+    return self.text(in: insertedRange, matching: snapshot) == text
+  }
 }
