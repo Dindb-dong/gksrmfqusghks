@@ -52,7 +52,11 @@ public final class ManualCorrectionCoordinator {
       return .cancelled(.busy)
     }
     isBusy = true
-    defer { isBusy = false }
+    InputHandoffDiagnostics.begin()
+    defer {
+      isBusy = false
+      InputHandoffDiagnostics.endIfPending(.cancelled)
+    }
 
     guard let sourceBefore = inputSources.currentSource() else {
       return .cancelled(.sourceUnavailable)
@@ -103,6 +107,7 @@ public final class ManualCorrectionCoordinator {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
     guard handoff.canStartSourceSwitch else {
+      InputHandoffDiagnostics.ended(.budgetBeforeNative)
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
     let selectedSource = await sourceSelection.perform(
@@ -117,6 +122,8 @@ public final class ManualCorrectionCoordinator {
     guard handoff.isValid, let sourceAfter = selectedSource,
       inputSources.currentSource() == sourceAfter
     else { return .cancelled(.sourceSwitchFailed(provisionalRecord)) }
+    InputHandoffDiagnostics.reached(.finalVerified)
+    InputHandoffDiagnostics.ended(.completed)
     return .corrected(
       CorrectionTransactionRecord(
         focusIdentity: snapshot.identity,
@@ -134,7 +141,11 @@ public final class ManualCorrectionCoordinator {
       return .unavailable
     }
     isBusy = true
-    defer { isBusy = false }
+    InputHandoffDiagnostics.begin()
+    defer {
+      isBusy = false
+      InputHandoffDiagnostics.endIfPending(.cancelled)
+    }
 
     guard
       let snapshot = rewriter.currentSnapshot(),
@@ -176,7 +187,10 @@ public final class ManualCorrectionCoordinator {
       )
     else { return .replacementUnverified }
     guard handoff.isValid else { return .sourceSwitchFailed }
-    guard handoff.canStartSourceSwitch else { return .sourceSwitchFailed }
+    guard handoff.canStartSourceSwitch else {
+      InputHandoffDiagnostics.ended(.budgetBeforeNative)
+      return .sourceSwitchFailed
+    }
     let selectedSource = await sourceSelection.perform(
       isStillValid: { !Task.isCancelled && handoff.isValid },
       handoff: handoff)
@@ -189,6 +203,8 @@ public final class ManualCorrectionCoordinator {
     guard handoff.isValid, let source = selectedSource,
       inputSources.currentSource() == source
     else { return .sourceSwitchFailed }
+    InputHandoffDiagnostics.reached(.finalVerified)
+    InputHandoffDiagnostics.ended(.completed)
     return .undone
   }
 

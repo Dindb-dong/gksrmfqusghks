@@ -42,7 +42,7 @@
 | Data | Memory | Disk | Network |
 |---|---:|---:|---:|
 | Current physical key token buffer | Yes, bounded | Never | Never |
-| Unforwarded input handoff events | Volatile, max 256, 80ms deadline | Never | Never |
+| Unforwarded input handoff events | Volatile, max 256, 200ms deadline | Never | Never |
 | Repeated-intent physical token sequences | Yes, max 32 in current focus | Never | Never |
 | Focused text/current word | Transient when required | Never | Never |
 | App exclusion bundle IDs | Yes | Yes | Never |
@@ -76,3 +76,5 @@
 - “모든 비밀번호 필드를 완벽하게 식별한다”고 주장하지 않습니다.
 - 비 sandboxed Developer ID 앱의 콘텐츠 네트워크 불가를 OS가 강제한다고 주장하지 않습니다. 대신 Sparkle 외 직접 네트워크 코드 부재, 공개 소스, 정적·동적 검증 증거를 제공합니다.
 - 접근성 권한이 단순하거나 낮은 위험이라고 축소 설명하지 않습니다.
+
+Local-test builds may answer an explicit local distributed-notification status request with only the last handoff stage and terminal outcome enum. This volatile scalar diagnostic contains no text, events, source identifiers, PID/app identity, timestamps, counts or history. It performs no mutation and has no disk or network sink; public builds do not register the responder.

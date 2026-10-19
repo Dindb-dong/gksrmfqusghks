@@ -58,7 +58,11 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.busy)
     }
     isBusy = true
-    defer { isBusy = false }
+    InputHandoffDiagnostics.begin()
+    defer {
+      isBusy = false
+      InputHandoffDiagnostics.endIfPending(.cancelled)
+    }
 
     guard let sourceBefore = inputSources.currentSource() else {
       return .cancelled(.sourceUnavailable)
@@ -162,8 +166,10 @@ public final class CorrectionTransactionCoordinator {
         self.inputSources.currentSource() == sourceBefore && mayMutate()
       })
     else {
+      InputHandoffDiagnostics.ended(.replacementRejected)
       return .cancelled(.replacementRejected)
     }
+    InputHandoffDiagnostics.reached(.textPosted)
 
     guard
       await rewriter.waitsForReplacement(
@@ -171,10 +177,12 @@ public final class CorrectionTransactionCoordinator {
         isStillValid: mayMutate, attempts: verificationAttempts, delay: delay
       )
     else {
+      InputHandoffDiagnostics.ended(.replacementUnverified)
       // An unverified write may still be in flight. Never launch another write over it.
       return .cancelled(.replacementUnverified)
     }
 
+    InputHandoffDiagnostics.reached(.textVerified)
     let provisionalRecord = CorrectionTransactionRecord(
       focusIdentity: expectedFocus,
       originalWithBoundary: observedText,
@@ -187,6 +195,7 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
     guard handoff.canStartSourceSwitch else {
+      InputHandoffDiagnostics.ended(.budgetBeforeNative)
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
     let selectedSource = await sourceSelection.perform(
@@ -200,6 +209,8 @@ public final class CorrectionTransactionCoordinator {
     guard mayMutate(), let sourceAfter = selectedSource,
       inputSources.currentSource() == sourceAfter
     else { return .cancelled(.sourceSwitchFailed(provisionalRecord)) }
+    InputHandoffDiagnostics.reached(.finalVerified)
+    InputHandoffDiagnostics.ended(.completed)
     return .corrected(
       CorrectionTransactionRecord(
         focusIdentity: expectedFocus,

@@ -171,9 +171,12 @@ final class InputHandoffGate: @unchecked Sendable {
     guard available, sourceCommand == nil, let tap, CGEvent.tapIsEnabled(tap: tap),
       let token = buffer.begin(now: DispatchTime.now().uptimeNanoseconds)
     else { return nil }
+    InputHandoffDiagnostics.reached(.gateBegan)
     activeToken = token
     sourceWasStarted = false
-    deadlineQueue.asyncAfter(deadline: .now() + .milliseconds(80)) { [weak self] in
+    deadlineQueue.asyncAfter(
+      deadline: .now() + .nanoseconds(Int(InputHandoffBuffer<CGEvent>.durationNanoseconds))
+    ) { [weak self] in
       self?.expire(token)
     }
     return token
@@ -233,6 +236,7 @@ final class InputHandoffGate: @unchecked Sendable {
           completion.resume(returning: false)
           return
         }
+        InputHandoffDiagnostics.reached(.nativeQueued)
         sourceCommand = SourceCommand(token: token, events: events, completion: completion)
         requestWake(token)
       }
@@ -252,7 +256,10 @@ final class InputHandoffGate: @unchecked Sendable {
       command.started = true
       sourceWasStarted = true
       sourceCommand = command
-      for event in command.events.dropLast() { event.tapPostEvent(proxy) }
+      InputHandoffDiagnostics.reached(.nativeStarted)
+      for event in command.events.dropLast() {
+        event.tapPostEvent(proxy)
+      }
       let token = command.token
       deadlineQueue.asyncAfter(deadline: .now() + sourceReleaseDelay) { [weak self] in
         guard let self else { return }
@@ -266,6 +273,7 @@ final class InputHandoffGate: @unchecked Sendable {
     guard mustRelease || command.cleanupRequested else { return }
     sourceCommand = nil
     command.events[3].tapPostEvent(proxy)
+    InputHandoffDiagnostics.reached(.nativeReleased)
     command.completion.resume(returning: !mustRelease)
   }
 
@@ -363,7 +371,10 @@ final class InputHandoffGate: @unchecked Sendable {
     if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
     if let command = sourceCommand {
       sourceCommand = nil
-      if command.started { post(command.events[3]) }
+      if command.started {
+        post(command.events[3])
+        InputHandoffDiagnostics.reached(.nativeReleased)
+      }
       command.completion.resume(returning: false)
     }
     for pending in buffer.drain() { post(pending) }

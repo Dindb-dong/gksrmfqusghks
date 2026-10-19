@@ -33,6 +33,69 @@ final class InputSourceControllerTests: XCTestCase {
     XCTAssertEqual(requests, 1)
   }
 
+  @MainActor
+  func testNativeBranchDistinguishesBudgetDispatchAndAcknowledgmentFailures() async throws {
+    for mode in 0..<5 {
+      let handoff = TimedInputHandoff()
+      handoff.now = mode == 0 ? 164_999_999 : (mode == 1 ? 165_000_000 : 100_000_000)
+      if mode == 2 { handoff.queueDelayMilliseconds = 66 }
+      let center = NotificationCenter()
+      var source = InputSourceSnapshot(
+        identifier: InputSourceController.abcIdentifier, language: .english)
+      let controller = InputSourceController(
+        readSource: { source },
+        selectSource: { _ in
+          XCTFail("Native branch must not use TIS")
+          return false
+        },
+        prepareNativeSwitch: { NativeInputSourceSwitch(isCurrentContext: { mode != 4 }) },
+        notifications: center, acknowledgmentDelay: {})
+      if mode == 0 {
+        handoff.onCommand = {
+          source = InputSourceSnapshot(
+            identifier: InputSourceController.korean2SetIdentifier, language: .korean)
+          center.post(name: InputSourceController.sourceChanged, object: nil)
+        }
+      }
+      let prepared = try XCTUnwrap(controller.prepareSelection(language: .korean))
+      let result = await prepared.perform(isStillValid: { handoff.isValid }, handoff: handoff)
+      XCTAssertEqual(result?.language, mode == 0 ? .korean : nil)
+      XCTAssertEqual(handoff.commandCount, mode == 0 || mode == 3 ? 1 : 0)
+      let expected: InputHandoffDiagnostics.Outcome =
+        switch mode {
+        case 0: .pending
+        case 1: .budgetBeforeNative
+        case 2: .nativeDispatchFailed
+        case 3: .sourceUnacknowledged
+        default: .contextCancelled
+        }
+      XCTAssertEqual(InputHandoffDiagnostics.snapshot.outcome, expected)
+      if mode == 3 { XCTAssertEqual(InputHandoffDiagnostics.snapshot.stage, .nativeReleased) }
+    }
+  }
+
+  @MainActor
+  func testCancelledNativeRequestNeverDispatches() async throws {
+    let handoff = TimedInputHandoff()
+    let controller = InputSourceController(
+      readSource: {
+        InputSourceSnapshot(identifier: InputSourceController.abcIdentifier, language: .english)
+      },
+      selectSource: { _ in
+        XCTFail("Unexpected TIS fallback")
+        return false
+      },
+      prepareNativeSwitch: { NativeInputSourceSwitch() }, notifications: NotificationCenter(),
+      acknowledgmentDelay: {})
+    let prepared = try XCTUnwrap(controller.prepareSelection(language: .korean))
+    let task = Task { await prepared.perform(isStillValid: { true }, handoff: handoff) }
+    task.cancel()
+    let result = await task.value
+    XCTAssertNil(result)
+    XCTAssertEqual(handoff.commandCount, 0)
+    XCTAssertEqual(InputHandoffDiagnostics.snapshot.outcome, .contextCancelled)
+  }
+
   func testUsesStableIdentifiersInsteadOfDisplayNames() {
     XCTAssertEqual(
       InputSourceController.language(forIdentifier: InputSourceController.abcIdentifier),

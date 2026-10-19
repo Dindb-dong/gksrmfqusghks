@@ -16,7 +16,7 @@ public struct InputHandoffBuffer<Event> {
   private var generation: UInt64 = 0
   private let maximumCount: Int
   public var count: Int { events.count }
-  public static var durationNanoseconds: UInt64 { 80_000_000 }
+  public static var durationNanoseconds: UInt64 { 200_000_000 }
 
   public init(maximumCount: Int = 256) {
     precondition(maximumCount > 0)

@@ -82,7 +82,13 @@ public final class PreparedTextReplacement {
   public func perform(isStillValid: @MainActor () -> Bool) -> Bool {
     guard let operation else { return false }
     self.operation = nil
-    return operation(isStillValid)
+    let accepted = operation(isStillValid)
+    if accepted {
+      InputHandoffDiagnostics.reached(.textPosted)
+    } else {
+      InputHandoffDiagnostics.ended(.replacementRejected)
+    }
+    return accepted
   }
 }
 
@@ -165,6 +171,8 @@ extension FocusedTextRewriting {
       try? await Task.sleep(for: .milliseconds(4))
     }
   ) async -> Bool {
+    var verified = false
+    defer { if !verified { InputHandoffDiagnostics.endIfPending(.replacementUnverified) } }
     for attempt in 0..<attempts {
       guard !Task.isCancelled, isStillValid() else { return false }
       guard let snapshot = currentSnapshot(), snapshot.identity == identity,
@@ -174,7 +182,11 @@ extension FocusedTextRewriting {
       if snapshot.selection == caret {
         let inserted = TextUTF16Range(location: range.location, length: text.utf16.count)
         guard let observed = self.text(in: inserted, matching: snapshot) else { return false }
-        if observed == text { return !Task.isCancelled && isStillValid() }
+        if observed == text {
+          verified = !Task.isCancelled && isStillValid()
+          if verified { InputHandoffDiagnostics.reached(.textVerified) }
+          return verified
+        }
       }
       if attempt + 1 < attempts { await delay() }
     }

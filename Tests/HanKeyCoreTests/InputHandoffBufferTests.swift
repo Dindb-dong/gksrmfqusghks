@@ -27,7 +27,7 @@ final class InputHandoffBufferTests: XCTestCase {
       var queue = InputHandoffBuffer<Int>(maximumCount: mode == 1 ? 1 : 8)
       let token = try XCTUnwrap(queue.begin(now: 0))
       _ = queue.receive(now: 1, copy: { 7 })
-      let now: UInt64 = mode == 0 ? 80_000_000 : 2
+      let now: UInt64 = mode == 0 ? InputHandoffBuffer<Int>.durationNanoseconds : 2
       guard case .pass(let prefix) = queue.receive(now: now, copy: { mode == 2 ? nil : 8 }) else {
         return XCTFail("Expected fail-open physical input release")
       }
@@ -41,14 +41,14 @@ final class InputHandoffBufferTests: XCTestCase {
     var queue = InputHandoffBuffer<Int>()
     let first = try XCTUnwrap(queue.begin(now: 0))
     XCTAssertFalse(queue.requestRelease(first))
-    let second = try XCTUnwrap(queue.begin(now: 70_000_000))
-    _ = queue.receive(now: 71_000_000, copy: { 9 })
-    XCTAssertFalse(queue.expire(first, now: 80_000_000))
+    let second = try XCTUnwrap(queue.begin(now: 190_000_000))
+    _ = queue.receive(now: 191_000_000, copy: { 9 })
+    XCTAssertFalse(queue.expire(first, now: 200_000_000))
     XCTAssertFalse(queue.requestRelease(first))
-    XCTAssertFalse(queue.needsDrain(now: 80_000_000))
-    XCTAssertTrue(queue.isValid(second, now: 80_000_000))
-    XCTAssertTrue(queue.expire(second, now: 150_000_000))
-    XCTAssertFalse(queue.isValid(second, now: 150_000_000))
+    XCTAssertFalse(queue.needsDrain(now: 200_000_000))
+    XCTAssertTrue(queue.isValid(second, now: 200_000_000))
+    XCTAssertTrue(queue.expire(second, now: 390_000_000))
+    XCTAssertFalse(queue.isValid(second, now: 390_000_000))
     XCTAssertEqual(queue.drain(), [9])
     XCTAssertTrue(queue.drain().isEmpty)
   }
@@ -65,7 +65,7 @@ final class InputHandoffBufferTests: XCTestCase {
     else { return XCTFail("Idle input must pass") }
     XCTAssertTrue(prefix.isEmpty)
     let token = try XCTUnwrap(queue.begin(now: 0))
-    XCTAssertTrue(queue.isValid(token, now: 64_999_999))
-    XCTAssertFalse(queue.isValid(token, now: 65_000_000))
+    XCTAssertTrue(queue.isValid(token, now: 184_999_999))
+    XCTAssertFalse(queue.isValid(token, now: 185_000_000))
   }
 }

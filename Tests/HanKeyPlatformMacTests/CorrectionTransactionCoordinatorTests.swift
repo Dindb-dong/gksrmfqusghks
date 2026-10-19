@@ -532,6 +532,77 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertTrue(sources.selectedLanguages.isEmpty)
   }
 
+  func testNativeSwitchStillRunsAfterCostlyReplacementAcknowledgment() async throws {
+    for target in [TokenLanguage.korean, .english] {
+      let original = target == .korean ? "gksrmffh" : "ㅡ먀ㅜ"
+      let replacement = target == .korean ? "한글로" : "main"
+      let rewriter = FakeTextRewriter(
+        document: original + " ", caret: original.utf16.count + 1, identity: identity)
+      let handoff = TimedInputHandoff()
+      let center = NotificationCenter()
+      var source = InputSourceSnapshot(
+        identifier: InputSourceController.identifier(for: target.opposite),
+        language: target.opposite)
+      let sources = InputSourceController(
+        readSource: { source },
+        selectSource: { _ in
+          XCTFail("Native path fell back to TIS")
+          return false
+        },
+        prepareNativeSwitch: { NativeInputSourceSwitch() }, notifications: center,
+        acknowledgmentDelay: {})
+      handoff.onCommand = {
+        source = InputSourceSnapshot(
+          identifier: InputSourceController.identifier(for: target), language: target)
+        center.post(name: InputSourceController.sourceChanged, object: nil)
+      }
+      rewriter.onReplace = {
+        handoff.advance(milliseconds: 40)
+        rewriter.onRead = { handoff.advance(milliseconds: 20) }
+      }
+      let coordinator = CorrectionTransactionCoordinator(
+        rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff }, delay: {})
+      let result = await coordinator.perform(
+        proposal: proposal(original: original, replacement: replacement, target: target),
+        boundary: .space, expectedFocus: identity)
+      guard case .corrected(let record) = result else {
+        XCTFail("Verified replacement must retain a native source-switch budget: \(result)")
+        continue
+      }
+      XCTAssertEqual(record.sourceAfter?.language, target)
+      XCTAssertEqual(InputHandoffDiagnostics.snapshot.outcome, .completed)
+      XCTAssertEqual(handoff.commandCount, 1)
+      XCTAssertEqual(rewriter.replaceCount, 1)
+      XCTAssertEqual(rewriter.document, replacement + " ")
+    }
+  }
+
+  func testPostSourceVerificationPreservesNativeDispatchFailure() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let handoff = TimedInputHandoff()
+    handoff.onCommand = { handoff.finish() }
+    let sources = InputSourceController(
+      readSource: {
+        InputSourceSnapshot(identifier: InputSourceController.abcIdentifier, language: .english)
+      },
+      selectSource: { _ in
+        XCTFail("Unexpected TIS fallback")
+        return false
+      },
+      prepareNativeSwitch: { NativeInputSourceSwitch() }, notifications: NotificationCenter(),
+      acknowledgmentDelay: {})
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff }, delay: {})
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity)
+    XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(InputHandoffDiagnostics.snapshot.outcome, .nativeDispatchFailed)
+    XCTAssertEqual(InputHandoffDiagnostics.snapshot.stage, .nativeReleased)
+    XCTAssertEqual(handoff.commandCount, 1)
+    XCTAssertEqual(rewriter.replaceCount, 1)
+  }
+
   func testSourceFailureReturnsUndoableRecordAfterVerifiedRewrite() async {
     let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english, canSelect: false)
@@ -546,6 +617,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     guard case .cancelled(.sourceSwitchFailed(let record)) = result else {
       return XCTFail("Expected a source switch failure with a record, got \(result)")
     }
+    XCTAssertEqual(InputHandoffDiagnostics.snapshot.outcome, .cancelled)
     XCTAssertEqual(rewriter.document, "한글로 ")
     XCTAssertEqual(record.originalWithBoundary, "gksrmffh ")
     XCTAssertNil(record.sourceAfter)
@@ -709,6 +781,7 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
       proposal: proposal(original: "ㅡ먀ㅜ", replacement: "main", target: .english),
       boundary: .space, expectedFocus: identity)
     XCTAssertEqual(result, .cancelled(.replacementUnverified))
+    XCTAssertEqual(InputHandoffDiagnostics.snapshot.outcome, .replacementUnverified)
     XCTAssertEqual(rewriter.replaceCount, 1)
   }
 

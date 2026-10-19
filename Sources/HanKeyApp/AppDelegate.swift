@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var onboardingWindowController: NSWindowController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    InputHandoffDiagnostics.startLocalTestResponder()
     AppModel.shared.startSoftwareUpdates()
     #if DEBUG
       if ProcessInfo.processInfo.arguments.contains("--dark-appearance") {

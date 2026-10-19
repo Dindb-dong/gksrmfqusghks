@@ -98,7 +98,7 @@ final class InputHandoffIntegrationTests: XCTestCase {
     let gate = InputHandoffGate(
       targetPID: getpid(), wakePoster: { wakeRoute.post($0) },
       sourceReleaseDelay: mode.usesNative && mode != .native
-        ? .milliseconds(200) : .milliseconds(20),
+        ? .milliseconds(400) : .milliseconds(20),
       maximumBufferCount: mode == .nativeOverflow ? 16 : 256)
     defer { gate.stop() }
     let handoff = try XCTUnwrap(InputHandoff(gate: gate))
@@ -128,7 +128,7 @@ final class InputHandoffIntegrationTests: XCTestCase {
       XCTAssertTrue(sink.events.isEmpty, "Input must wait before the downstream tap")
       handoff.finish()
     case .expired:
-      holdMainRunloop(0.12)
+      holdMainRunloop(0.23)
       XCTAssertFalse(handoff.isValid)
       XCTAssertEqual(
         sink.events, Array(0..<16), "Deadline must release events without the main loop")
@@ -210,6 +210,11 @@ final class InputHandoffIntegrationTests: XCTestCase {
       sink.flags,
       syntheticFlags
         + (0..<rawCount).map { $0.isMultiple(of: 3) ? CGEventFlags.maskShift.rawValue : 0 })
+    if mode == .native {
+      let chord = Array(sink.timestamps.prefix(4))
+      XCTAssertEqual(chord, chord.sorted())
+      XCTAssertGreaterThanOrEqual(chord[3] - chord[2], 20_000_000)
+    }
     if mode == .lostWake { XCTAssertGreaterThanOrEqual(wakeRoute.count, 2) }
   }
 }
@@ -225,6 +230,7 @@ private final class HandoffEventSink: @unchecked Sendable {
   private let received: XCTestExpectation
   private var captured: [UInt32] = []
   private var capturedFlags: [UInt64] = []
+  private var capturedTimestamps: [UInt64] = []
   private var runLoop: CFRunLoop?
   private var available = false
 
@@ -235,6 +241,7 @@ private final class HandoffEventSink: @unchecked Sendable {
 
   var events: [UInt32] { lock.withLock { captured } }
   var flags: [UInt64] { lock.withLock { capturedFlags } }
+  var timestamps: [UInt64] { lock.withLock { capturedTimestamps } }
 
   func start() throws {
     Thread { [self] in
@@ -271,6 +278,7 @@ private final class HandoffEventSink: @unchecked Sendable {
             let done = sink.lock.withLock {
               sink.captured.append(UInt32(ordinal))
               sink.capturedFlags.append(event.flags.rawValue)
+              sink.capturedTimestamps.append(event.timestamp)
               return sink.captured.count == sink.expectedCount
             }
             if done { sink.received.fulfill() }

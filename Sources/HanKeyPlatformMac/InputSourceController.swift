@@ -49,6 +49,7 @@ public final class InputSourceController: InputSourceControlling {
 
   public func prepareSelection(language: TokenLanguage) -> PreparedInputSourceSelection? {
     guard let previous = currentSource() else { return nil }
+    InputHandoffDiagnostics.begin()
     let desired = InputSourceSnapshot(
       identifier: Self.identifier(for: language), language: language)
     if previous == desired {
@@ -83,6 +84,8 @@ public final class InputSourceController: InputSourceControlling {
     native: NativeInputSourceSwitch?, isStillValid: @MainActor () -> Bool,
     handoff: (any InputHandoffControlling)?
   ) async -> InputSourceSnapshot? {
+    var acknowledged = false
+    defer { if !acknowledged { InputHandoffDiagnostics.endIfPending(.contextCancelled) } }
     guard !Task.isCancelled, isStillValid(), currentSource() == previous else { return nil }
     let signal = SourceChangeSignal()
     if let distributed = notifications as? DistributedNotificationCenter {
@@ -97,19 +100,32 @@ public final class InputSourceController: InputSourceControlling {
     defer { notifications.removeObserver(signal) }
     guard !Task.isCancelled, isStillValid(), currentSource() == previous else { return nil }
     if let native {
-      guard native.isCurrentContext(), isStillValid(), let handoff,
-        handoff.canStartSourceSwitch,
-        await handoff.performSourceSwitch(events: native.events)
-      else { return nil }
+      guard native.isCurrentContext(), isStillValid(), let handoff else {
+        InputHandoffDiagnostics.ended(.contextCancelled)
+        return nil
+      }
+      guard handoff.canStartSourceSwitch else {
+        InputHandoffDiagnostics.ended(.budgetBeforeNative)
+        return nil
+      }
+      guard await handoff.performSourceSwitch(events: native.events) else {
+        InputHandoffDiagnostics.ended(.nativeDispatchFailed)
+        return nil
+      }
     } else {
       guard handoff?.canStartSourceSwitch ?? true, selectSource(language) else { return nil }
     }
     for attempt in 0..<8 {
       guard !Task.isCancelled, isStillValid(), let actual = currentSource() else { return nil }
-      if actual == desired, signal.received { return actual }
+      if actual == desired, signal.received {
+        acknowledged = true
+        InputHandoffDiagnostics.reached(.sourceAcknowledged)
+        return actual
+      }
       guard actual == previous || actual == desired else { return nil }
       if attempt < 7 { await acknowledgmentDelay() }
     }
+    InputHandoffDiagnostics.ended(.sourceUnacknowledged)
     return nil
   }
 

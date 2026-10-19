@@ -7,6 +7,47 @@ import XCTest
 final class ManualCorrectionCoordinatorTests: XCTestCase {
   private let identity = FocusedElementIdentity(processID: 7, elementHash: 9)
 
+  func testNativeManualCorrectionAndUndoKeepBudgetAfterSlowWrite() async throws {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmf", selection: TextUTF16Range(location: 6, length: 0), identity: identity)
+    let center = NotificationCenter()
+    var language = TokenLanguage.english
+    var activeHandoff: TimedInputHandoff?
+    var commands = 0
+    let sources = InputSourceController(
+      readSource: {
+        InputSourceSnapshot(
+          identifier: InputSourceController.identifier(for: language), language: language)
+      },
+      selectSource: { _ in
+        XCTFail("Unexpected TIS fallback")
+        return false
+      },
+      prepareNativeSwitch: { NativeInputSourceSwitch() }, notifications: center,
+      acknowledgmentDelay: {})
+    rewriter.onReplace = { activeHandoff?.advance(milliseconds: 60) }
+    let coordinator = ManualCorrectionCoordinator(
+      rewriter: rewriter, inputSources: sources,
+      makeInputHandoff: {
+        let handoff = TimedInputHandoff()
+        handoff.onCommand = {
+          commands += 1
+          language = language.opposite
+          center.post(name: InputSourceController.sourceChanged, object: nil)
+        }
+        activeHandoff = handoff
+        return handoff
+      })
+    let result = await coordinator.convertSelectionOrLastWord()
+    guard case .corrected(let record) = result else { return XCTFail("Expected native correction") }
+    XCTAssertEqual(language, .korean)
+    let undone = await coordinator.undo(record)
+    XCTAssertEqual(undone, .undone)
+    XCTAssertEqual(language, .english)
+    XCTAssertEqual(commands, 2)
+    XCTAssertEqual(rewriter.document, "gksrmf")
+  }
+
   func testUnsupportedSwitchPreventsManualAndUndoMutation() async {
     let rewriter = ManualFakeRewriter(
       document: "gksrmffh", selection: TextUTF16Range(location: 8, length: 0), identity: identity)
