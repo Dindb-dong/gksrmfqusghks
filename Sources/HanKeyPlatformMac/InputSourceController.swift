@@ -6,9 +6,31 @@ public final class InputSourceController: InputSourceControlling {
   public nonisolated static let abcIdentifier = "com.apple.keylayout.ABC"
   public nonisolated static let korean2SetIdentifier = "com.apple.inputmethod.Korean.2SetKorean"
 
-  public init() {}
+  private let readSource: @MainActor () -> InputSourceSnapshot?
+  private let selectSource: @MainActor (TokenLanguage) -> Bool
 
-  public func currentSource() -> InputSourceSnapshot? {
+  public convenience init() {
+    self.init(readSource: Self.readCurrentSource, selectSource: Self.selectSource)
+  }
+
+  init(
+    readSource: @escaping @MainActor () -> InputSourceSnapshot?,
+    selectSource: @escaping @MainActor (TokenLanguage) -> Bool
+  ) {
+    self.readSource = readSource
+    self.selectSource = selectSource
+  }
+
+  public func currentSource() -> InputSourceSnapshot? { readSource() }
+
+  public func select(language: TokenLanguage) -> InputSourceSnapshot? {
+    guard selectSource(language), let actual = currentSource(),
+      actual.identifier == Self.identifier(for: language), actual.language == language
+    else { return nil }
+    return actual
+  }
+
+  private static func readCurrentSource() -> InputSourceSnapshot? {
     let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
     guard
       let identifier = Self.stringProperty(source, key: kTISPropertyInputSourceID),
@@ -19,7 +41,7 @@ public final class InputSourceController: InputSourceControlling {
     return InputSourceSnapshot(identifier: identifier, language: language)
   }
 
-  public func select(language: TokenLanguage) -> InputSourceSnapshot? {
+  private static func selectSource(language: TokenLanguage) -> Bool {
     let desiredIdentifier = Self.identifier(for: language)
     let properties =
       [
@@ -31,9 +53,9 @@ public final class InputSourceController: InputSourceControlling {
       guard Self.isEnabledAndSelectable(source), TISSelectInputSource(source) == noErr else {
         continue
       }
-      return InputSourceSnapshot(identifier: desiredIdentifier, language: language)
+      return true
     }
-    return nil
+    return false
   }
 
   public nonisolated static func language(forIdentifier identifier: String) -> TokenLanguage? {

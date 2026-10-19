@@ -21,4 +21,28 @@ final class InputSourceControllerTests: XCTestCase {
       InputSourceController.korean2SetIdentifier
     )
   }
+  @MainActor
+  func testSelectionRequiresActualSourceReadback() {
+    let old = InputSourceSnapshot(
+      identifier: InputSourceController.abcIdentifier, language: .english)
+    let controller = InputSourceController(readSource: { old }, selectSource: { _ in true })
+    XCTAssertNil(controller.select(language: .korean))
+  }
+
+  @MainActor
+  func testSelectionFailsWhenCurrentSourceIsUnavailable() {
+    let controller = InputSourceController(readSource: { nil }, selectSource: { _ in true })
+    XCTAssertNil(controller.select(language: .korean))
+  }
+
+  @MainActor
+  func testSelectionReturnsVerifiedSourceOnly() {
+    let actual = InputSourceSnapshot(
+      identifier: InputSourceController.korean2SetIdentifier, language: .korean)
+    let controller = InputSourceController(readSource: { actual }, selectSource: { _ in true })
+    XCTAssertEqual(controller.select(language: .korean), actual)
+    let failed = InputSourceController(readSource: { actual }, selectSource: { _ in false })
+    XCTAssertNil(failed.select(language: .korean))
+  }
+
 }
