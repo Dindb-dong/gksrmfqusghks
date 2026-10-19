@@ -43,3 +43,5 @@ Automated classification is not a claim that every app release has been live-tes
 표준 자동·수동 교정 및 Undo는 1.0.1의 PID 지정 Unicode 이벤트 전송과 검증 가능한 range/caret을 사용합니다. 후속 물리 입력은 handoff 동안 기다리고 표시된 합성 교체 이벤트는 통과합니다. AXSelectedText setter 지원을 요구하지 않습니다. 정확한 교체와 시스템 입력 소스 변경 알림/ID를 확인하며 불확실한 쓰기 뒤 추가 삽입이나 부분 복구는 하지 않습니다. 시스템 소스 알림이 개별 앱 내부의 IME 준비 완료를 증명하지는 않으므로 Codex 등 실제 앱에서의 후속 타이핑 호환성은 별도 확인이 필요합니다.
 
 독립 AppKit `NSTextView` fixture와 OS 이벤트 전달 테스트는 재현 가능한 자동 검증을 제공합니다. 이 결과는 Slack·브라우저·모든 Electron 버전의 실사용 검증을 대신하지 않습니다.
+
+로컬 테스트 1.0.2/build7에서는 사용자가 Codex 채팅의 자연스러운 영→한 자동 교정 뒤 실제 입력기 전환과 후속 한글 입력을 확인했습니다. 내용 없는 수동 상태 조회도 `finalVerified / completed`를 반환했습니다. 에이전트는 해당 채팅에 입력을 보내거나 내용을 읽지 않았습니다. 이 한 사례로 다른 앱·장시간 입력·드문 중복 입력까지 지원을 확대해 주장하지 않습니다.

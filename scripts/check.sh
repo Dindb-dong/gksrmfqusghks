@@ -11,7 +11,9 @@ swift format lint \
     "$HANKEY_ROOT/Sources" \
     "$HANKEY_ROOT/Tests"
 
-swift test --package-path "$HANKEY_ROOT" --parallel
+swift test --package-path "$HANKEY_ROOT" --parallel --skip InputHandoffIntegrationTests
+# Real event delivery has a 200ms deadline; do not contend with parallel test-process startup.
+swift test --package-path "$HANKEY_ROOT" --no-parallel --filter InputHandoffIntegrationTests
 "$HANKEY_ROOT/scripts/verify-no-network.sh"
 "$HANKEY_ROOT/scripts/verify-privacy-boundaries.sh"
 "$HANKEY_ROOT/scripts/build-app.sh" release

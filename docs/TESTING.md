@@ -22,6 +22,8 @@ fixture에는 실제 사용자의 입력, 채팅, 주소, 토큰, 비밀번호�
 
 ### Platform integration tests
 
+`./scripts/check.sh` runs pure/fake tests in parallel, then own-PID event-tap integration tests serially. Event-delivery deadlines must not compete with the startup of hundreds of test processes; serial execution preserves the same production 200ms deadline and all integration assertions.
+
 - event normalization and sentinel loop prevention
 - permission state transitions
 - focused element selection range adapter
@@ -68,7 +70,9 @@ fixture에는 실제 사용자의 입력, 채팅, 주소, 토큰, 비밀번호�
 ## Input handoff regressions
 
 - `swift test --filter 'CorrectionTransactionCoordinatorTests|ManualCorrectionCoordinatorTests|FocusedTextRewriterTests|InputSourceControllerTests|GlobalInputEventTapTests|FocusedElementSecurityInspectorTests'` verifies stale selection/activity, exact text at the expected caret, partial-write non-retry, preparation before gating, synthetic bypass, source-notification/readback failures, IME-side text changes, expired handoffs, and protected attribute-read failures.
-- `HANKEY_RUN_INPUT_HANDOFF_INTEGRATION=1 swift test --filter InputHandoffIntegrationTests` exercises the real macOS event path with 16 uniquely numbered unmapped key events. A downstream consuming tap is established before posting. Tests cover normal release, deadline release while the main thread is blocked, and idle forwarding; no characters are typed into other apps. Existing Accessibility permission is required; tests otherwise skip without requesting permission.
+- `swift test --filter InputHandoffIntegrationTests` exercises the real macOS event path with 16 uniquely numbered unmapped key events. A downstream consuming tap is established before posting. Tests cover ordered one-shot release, the single 200ms deadline while the main thread is blocked, idle forwarding, synthetic progress, lost wake retries, cancellation and modifier cleanup; no characters are typed into other apps. Existing Accessibility permission is required; tests otherwise skip without requesting permission.
 - `scripts/check-native-input.sh` creates and removes its own temporary AppKit application containing only synthetic `NSTextView` text. It verifies both correction directions, exact caret placement, and subsequent Korean/English key input addressed only to the fixture PID. It never opens an existing document. It briefly changes focus/input source and restores the original source while the fixture remains frontmost. Existing Accessibility permission and enabled ABC/2-Set Korean sources are required. `HANKEY_SCRATCH_PATH` can point at an existing canonical build cache.
 
-Under the current user constraint, run only background unit/static checks; do not run either opt-in event injection or the foreground native fixture. These checks do not establish every chat app's AX support or IME behavior. Do not run live checks in a user's existing document.
+Under the current user constraint, use background unit/static checks and own-PID integration tests with consuming sinks only. Do not run the foreground native fixture or global routing probes as part of routine verification. Existing documents/chats must never be used as agent-driven test targets. The foreground fixture remains an explicitly authorized manual diagnostic only.
+
+Native-controller tests must exercise `prepareNativeSwitch` and a core-backed elapsed-time handoff, rather than only the injected TIS selector. Cover delayed exact-text acknowledgment, the 35ms source reserve, queued/cancelled dispatch and missing source acknowledgment. A notification/readback is not proof of effective per-app IME readiness. The user reported successful actual switching and continued Korean typing in Codex on local-test1.0.2/build7; see `docs/qa/input-handoff.md` for the narrower acceptance evidence and remaining limits.
