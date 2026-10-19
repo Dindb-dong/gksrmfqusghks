@@ -105,10 +105,45 @@ public protocol FocusedTextRewriting: AnyObject {
 @MainActor
 public protocol InputSourceControlling: AnyObject {
   func currentSource() -> InputSourceSnapshot?
+  func prepareSelection(language: TokenLanguage) -> PreparedInputSourceSelection?
   func select(language: TokenLanguage) -> InputSourceSnapshot?
   func selectAndConfirm(
     language: TokenLanguage, isStillValid: @MainActor () -> Bool
   ) async -> InputSourceSnapshot?
+}
+
+@MainActor
+public final class PreparedInputSourceSelection {
+  private var operation:
+    (
+      @MainActor (@MainActor () -> Bool, (any InputHandoffControlling)?) async ->
+        InputSourceSnapshot?
+    )?
+
+  public init(
+    _ operation:
+      @escaping @MainActor (@MainActor () -> Bool, (any InputHandoffControlling)?) async ->
+      InputSourceSnapshot?
+  ) {
+    self.operation = operation
+  }
+
+  public func perform(
+    isStillValid: @MainActor () -> Bool, handoff: (any InputHandoffControlling)? = nil
+  ) async -> InputSourceSnapshot? {
+    guard let operation else { return nil }
+    self.operation = nil
+    return await operation(isStillValid, handoff)
+  }
+}
+
+extension InputSourceControlling {
+  public func prepareSelection(language: TokenLanguage) -> PreparedInputSourceSelection? {
+    PreparedInputSourceSelection { isStillValid, handoff in
+      guard handoff?.canStartSourceSwitch ?? true else { return nil }
+      return await self.selectAndConfirm(language: language, isStillValid: isStillValid)
+    }
+  }
 }
 
 // Web accessibility caches acknowledge accepted mutations asynchronously.

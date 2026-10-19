@@ -4,6 +4,35 @@ import XCTest
 @testable import HanKeyPlatformMac
 
 final class InputSourceControllerTests: XCTestCase {
+  @MainActor
+  func testPreparedSwitchIsOneShotAndReservesTheWholeChord() async throws {
+    let center = NotificationCenter()
+    var current = InputSourceSnapshot(
+      identifier: InputSourceController.abcIdentifier, language: .english)
+    var requests = 0
+    let controller = InputSourceController(
+      readSource: { current },
+      selectSource: { language in
+        requests += 1
+        current = InputSourceSnapshot(
+          identifier: InputSourceController.identifier(for: language), language: language)
+        center.post(name: InputSourceController.sourceChanged, object: nil)
+        return true
+      }, notifications: center, acknowledgmentDelay: {})
+    let expired = try XCTUnwrap(controller.prepareSelection(language: .korean))
+    let expiredHandoff = TestInputHandoff()
+    expiredHandoff.isValid = false
+    let expiredResult = await expired.perform(isStillValid: { true }, handoff: expiredHandoff)
+    XCTAssertNil(expiredResult)
+    XCTAssertEqual(requests, 0)
+    let prepared = try XCTUnwrap(controller.prepareSelection(language: .korean))
+    let first = await prepared.perform(isStillValid: { true })
+    let second = await prepared.perform(isStillValid: { true })
+    XCTAssertEqual(first?.language, .korean)
+    XCTAssertNil(second)
+    XCTAssertEqual(requests, 1)
+  }
+
   func testUsesStableIdentifiersInsteadOfDisplayNames() {
     XCTAssertEqual(
       InputSourceController.language(forIdentifier: InputSourceController.abcIdentifier),

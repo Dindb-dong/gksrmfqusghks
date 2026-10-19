@@ -1,4 +1,5 @@
 import AppKit
+import HanKeyPlatformMac
 import SwiftUI
 
 @MainActor
@@ -21,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
     showInitialOnboarding()
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    InputHandoff.shutdown()
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {

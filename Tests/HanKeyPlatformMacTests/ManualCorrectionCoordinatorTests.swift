@@ -7,6 +7,42 @@ import XCTest
 final class ManualCorrectionCoordinatorTests: XCTestCase {
   private let identity = FocusedElementIdentity(processID: 7, elementHash: 9)
 
+  func testUnsupportedSwitchPreventsManualAndUndoMutation() async {
+    let rewriter = ManualFakeRewriter(
+      document: "gksrmffh", selection: TextUTF16Range(location: 8, length: 0), identity: identity)
+    let sourceState = ManualFakeSources(language: .english)
+    let sources = InputSourceController(
+      readSource: { sourceState.current },
+      selectSource: { _ in
+        XCTFail("No TIS fallback")
+        return false
+      }, prepareNativeSwitch: { nil })
+    let coordinator = ManualCorrectionCoordinator(
+      rewriter: rewriter, inputSources: sources,
+      makeInputHandoff: {
+        XCTFail("No input wait for unsupported switch")
+        return TestInputHandoff()
+      })
+    let manual = await coordinator.convertSelectionOrLastWord()
+    XCTAssertEqual(manual, .cancelled(.sourceUnavailable))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+
+    let before = InputSourceSnapshot(
+      identifier: InputSourceController.abcIdentifier, language: .english)
+    sourceState.current = InputSourceSnapshot(
+      identifier: InputSourceController.korean2SetIdentifier, language: .korean)
+    rewriter.document = "한글로"
+    rewriter.selection = TextUTF16Range(location: 3, length: 0)
+    let record = CorrectionTransactionRecord(
+      focusIdentity: identity, originalWithBoundary: "gksrmffh",
+      replacementWithBoundary: "한글로", replacedRange: TextUTF16Range(location: 0, length: 8),
+      sourceBefore: before, sourceAfter: sourceState.current)
+    let undone = await coordinator.undo(record)
+    XCTAssertEqual(undone, .sourceSwitchFailed)
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertEqual(rewriter.document, "한글로")
+  }
+
   func testConvertsSelectedHangulAndSwitchesToEnglish() async {
     let rewriter = ManualFakeRewriter(
       document: "앞 ㅛㅐㅜㄴ댜 뒤",

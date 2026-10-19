@@ -140,6 +140,8 @@ public final class CorrectionTransactionCoordinator {
       return .cancelled(.unsafeBoundary)
     }
     let replacementWithBoundary = proposal.replacement + boundaryText
+    guard let sourceSelection = inputSources.prepareSelection(language: proposal.targetLanguage)
+    else { return .cancelled(.sourceUnavailable) }
     guard
       let prepared = rewriter.prepareReplacement(
         range: replacedRange, with: replacementWithBoundary, expectedText: observedText,
@@ -184,8 +186,11 @@ public final class CorrectionTransactionCoordinator {
     guard mayMutate(), inputSources.currentSource() == sourceBefore else {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
-    let selectedSource = await inputSources.selectAndConfirm(
-      language: proposal.targetLanguage, isStillValid: mayMutate)
+    guard handoff.canStartSourceSwitch else {
+      return .cancelled(.sourceSwitchFailed(provisionalRecord))
+    }
+    let selectedSource = await sourceSelection.perform(
+      isStillValid: mayMutate, handoff: handoff)
     guard
       await rewriter.waitsForReplacement(
         replacementWithBoundary, in: replacedRange, identity: expectedFocus,

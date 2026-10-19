@@ -1,3 +1,4 @@
+import AppKit
 import Carbon.HIToolbox
 import Foundation
 import HanKeyCore
@@ -9,18 +10,22 @@ public final class InputSourceController: InputSourceControlling {
 
   private let readSource: @MainActor () -> InputSourceSnapshot?
   private let selectSource: @MainActor (TokenLanguage) -> Bool
+  private let prepareNativeSwitch: (@MainActor () -> NativeInputSourceSwitch?)?
   private let notifications: NotificationCenter
   private let acknowledgmentDelay: @MainActor () async -> Void
   nonisolated static let sourceChanged = Notification.Name(
     kTISNotifySelectedKeyboardInputSourceChanged as String)
 
   public convenience init() {
-    self.init(readSource: Self.readCurrentSource, selectSource: Self.selectSource)
+    self.init(
+      readSource: Self.readCurrentSource, selectSource: Self.selectSource,
+      prepareNativeSwitch: Self.makeNativeSwitch)
   }
 
   init(
     readSource: @escaping @MainActor () -> InputSourceSnapshot?,
     selectSource: @escaping @MainActor (TokenLanguage) -> Bool,
+    prepareNativeSwitch: (@MainActor () -> NativeInputSourceSwitch?)? = nil,
     notifications: NotificationCenter = DistributedNotificationCenter.default(),
     acknowledgmentDelay: @escaping @MainActor () async -> Void = {
       try? await Task.sleep(for: .milliseconds(4))
@@ -28,6 +33,7 @@ public final class InputSourceController: InputSourceControlling {
   ) {
     self.readSource = readSource
     self.selectSource = selectSource
+    self.prepareNativeSwitch = prepareNativeSwitch
     self.notifications = notifications
     self.acknowledgmentDelay = acknowledgmentDelay
   }
@@ -41,14 +47,43 @@ public final class InputSourceController: InputSourceControlling {
     return actual
   }
 
-  public func selectAndConfirm(
-    language: TokenLanguage, isStillValid: @MainActor () -> Bool
-  ) async -> InputSourceSnapshot? {
-    guard !Task.isCancelled, isStillValid() else { return nil }
+  public func prepareSelection(language: TokenLanguage) -> PreparedInputSourceSelection? {
     guard let previous = currentSource() else { return nil }
     let desired = InputSourceSnapshot(
       identifier: Self.identifier(for: language), language: language)
-    if previous == desired { return previous }
+    if previous == desired {
+      return PreparedInputSourceSelection { isStillValid, _ in
+        guard !Task.isCancelled, isStillValid(), self.currentSource() == desired else { return nil }
+        return desired
+      }
+    }
+    let native: NativeInputSourceSwitch?
+    if let prepareNativeSwitch {
+      guard let prepared = prepareNativeSwitch() else { return nil }
+      native = prepared
+    } else {
+      native = nil
+    }
+    return PreparedInputSourceSelection { isStillValid, handoff in
+      await self.confirmSelection(
+        language: language, previous: previous, desired: desired,
+        native: native, isStillValid: isStillValid, handoff: handoff)
+    }
+  }
+
+  public func selectAndConfirm(
+    language: TokenLanguage, isStillValid: @MainActor () -> Bool
+  ) async -> InputSourceSnapshot? {
+    guard let prepared = prepareSelection(language: language) else { return nil }
+    return await prepared.perform(isStillValid: isStillValid)
+  }
+
+  private func confirmSelection(
+    language: TokenLanguage, previous: InputSourceSnapshot, desired: InputSourceSnapshot,
+    native: NativeInputSourceSwitch?, isStillValid: @MainActor () -> Bool,
+    handoff: (any InputHandoffControlling)?
+  ) async -> InputSourceSnapshot? {
+    guard !Task.isCancelled, isStillValid(), currentSource() == previous else { return nil }
     let signal = SourceChangeSignal()
     if let distributed = notifications as? DistributedNotificationCenter {
       distributed.addObserver(
@@ -60,7 +95,15 @@ public final class InputSourceController: InputSourceControlling {
         object: nil)
     }
     defer { notifications.removeObserver(signal) }
-    guard !Task.isCancelled, isStillValid(), selectSource(language) else { return nil }
+    guard !Task.isCancelled, isStillValid(), currentSource() == previous else { return nil }
+    if let native {
+      guard native.isCurrentContext(), isStillValid(), let handoff,
+        handoff.canStartSourceSwitch,
+        await handoff.performSourceSwitch(events: native.events)
+      else { return nil }
+    } else {
+      guard handoff?.canStartSourceSwitch ?? true, selectSource(language) else { return nil }
+    }
     for attempt in 0..<8 {
       guard !Task.isCancelled, isStillValid(), let actual = currentSource() else { return nil }
       if actual == desired, signal.received { return actual }
@@ -68,6 +111,38 @@ public final class InputSourceController: InputSourceControlling {
       if attempt < 7 { await acknowledgmentDelay() }
     }
     return nil
+  }
+
+  private static func makeNativeSwitch() -> NativeInputSourceSwitch? {
+    let hotkeys =
+      CFPreferencesCopyAppValue(
+        "AppleSymbolicHotKeys" as CFString, "com.apple.symbolichotkeys" as CFString)
+      as? [String: Any]
+    let properties =
+      [
+        kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as Any,
+        kTISPropertyInputSourceIsEnabled as String: true,
+        kTISPropertyInputSourceIsSelectCapable as String: true,
+      ] as CFDictionary
+    let sources = TISCreateInputSourceList(properties, false).takeRetainedValue() as NSArray
+    var identifiers: [String] = []
+    for case let source as TISInputSource in sources {
+      guard let identifier = stringProperty(source, key: kTISPropertyInputSourceID) else {
+        return nil
+      }
+      identifiers.append(identifier)
+    }
+    guard
+      NativeInputSourceSwitch.configurationIsSupported(
+        hotkeys: hotkeys, enabledIdentifiers: identifiers)
+    else { return nil }
+    guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+      !IsSecureEventInputEnabled()
+    else { return nil }
+    return NativeInputSourceSwitch(isCurrentContext: {
+      NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+        && !IsSecureEventInputEnabled()
+    })
   }
 
   private static func readCurrentSource() -> InputSourceSnapshot? {

@@ -53,6 +53,7 @@ public final class InputObservationRuntime {
     }
   }
   private lazy var contextObserver = ContextInvalidationObserver { [weak self] reason in
+    InputHandoff.cancelActive(for: reason)
     Task { @MainActor [weak self] in
       self?.invalidate(reason)
     }
@@ -93,6 +94,7 @@ public final class InputObservationRuntime {
   }
 
   public func stop() {
+    InputHandoff.cancelActive(for: .stopped)
     eventTap.stop()
     contextObserver.stop()
     _ = buffer.handle(.invalidate(.stopped), at: currentTimestamp())
@@ -173,6 +175,7 @@ public final class InputObservationRuntime {
   private func refreshProtection(at timestamp: UInt64) -> Bool {
     let permissions = PlatformCapabilities.currentPermissionSnapshot()
     guard permissions.hasRequiredPermissions else {
+      InputHandoff.cancelActive(for: .stopped)
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
@@ -189,6 +192,7 @@ public final class InputObservationRuntime {
     )
 
     if mustProtect {
+      InputHandoff.cancelActive(for: .secureInput)
       _ = buffer.handle(.protectionChanged(isProtected: true), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
@@ -201,6 +205,7 @@ public final class InputObservationRuntime {
       _ = buffer.handle(.protectionChanged(isProtected: false), at: timestamp)
     }
     guard focusedContext.state == .editable, let identity = focusedContext.identity else {
+      InputHandoff.cancelActive(for: .focusChanged)
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
       focusTracker.reset()
       currentFocusIdentity = nil
@@ -208,6 +213,7 @@ public final class InputObservationRuntime {
       return false
     }
     if focusTracker.update(identity) {
+      InputHandoff.cancelActive(for: .focusChanged)
       _ = buffer.handle(.invalidate(.focusChanged), at: timestamp)
     }
     currentFocusIdentity = identity

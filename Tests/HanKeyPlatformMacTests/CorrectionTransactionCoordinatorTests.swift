@@ -7,6 +7,32 @@ import XCTest
 final class CorrectionTransactionCoordinatorTests: XCTestCase {
   private let identity = FocusedElementIdentity(processID: 42, elementHash: 7)
 
+  func testUnsupportedSourceSwitchCancelsBeforeTextSelectionOrReplacement() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    rewriter.onPrepare = { XCTFail("Must preflight before preparing text selection") }
+    let sources = InputSourceController(
+      readSource: {
+        InputSourceSnapshot(identifier: InputSourceController.abcIdentifier, language: .english)
+      },
+      selectSource: { _ in
+        XCTFail("No TIS fallback")
+        return false
+      },
+      prepareNativeSwitch: { nil })
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources,
+      makeInputHandoff: {
+        XCTFail("No input wait for unsupported switch")
+        return TestInputHandoff()
+      }, delay: {})
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity)
+    XCTAssertEqual(result, .cancelled(.sourceUnavailable))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertEqual(rewriter.document, "gksrmffh ")
+  }
+
   func testReplacesOnlyValidatedWordAndBoundaryThenSwitchesSource() async {
     let rewriter = FakeTextRewriter(document: "앞 gksrmffh ", caret: 11, identity: identity)
     let sources = FakeInputSources(currentLanguage: .english)

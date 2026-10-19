@@ -67,6 +67,8 @@ public final class ManualCorrectionCoordinator {
     guard let conversion = converted(target.text) else {
       return .cancelled(.unsupportedText)
     }
+    guard let sourceSelection = inputSources.prepareSelection(language: conversion.targetLanguage)
+    else { return .cancelled(.sourceUnavailable) }
     guard
       let prepared = rewriter.prepareReplacement(
         range: target.range, with: conversion.text, expectedText: target.text, matching: snapshot
@@ -100,8 +102,12 @@ public final class ManualCorrectionCoordinator {
     guard handoff.isValid, inputSources.currentSource() == sourceBefore else {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
-    let selectedSource = await inputSources.selectAndConfirm(
-      language: conversion.targetLanguage, isStillValid: { !Task.isCancelled && handoff.isValid })
+    guard handoff.canStartSourceSwitch else {
+      return .cancelled(.sourceSwitchFailed(provisionalRecord))
+    }
+    let selectedSource = await sourceSelection.perform(
+      isStillValid: { !Task.isCancelled && handoff.isValid },
+      handoff: handoff)
     guard
       await rewriter.waitsForReplacement(
         conversion.text, in: target.range, identity: snapshot.identity,
@@ -148,6 +154,9 @@ public final class ManualCorrectionCoordinator {
       return .contextChanged
     }
     guard
+      let sourceSelection = inputSources.prepareSelection(language: record.sourceBefore.language)
+    else { return .sourceSwitchFailed }
+    guard
       let prepared = rewriter.prepareReplacement(
         range: currentRange, with: record.originalWithBoundary,
         expectedText: record.replacementWithBoundary, matching: snapshot
@@ -167,9 +176,10 @@ public final class ManualCorrectionCoordinator {
       )
     else { return .replacementUnverified }
     guard handoff.isValid else { return .sourceSwitchFailed }
-    let selectedSource = await inputSources.selectAndConfirm(
-      language: record.sourceBefore.language, isStillValid: { !Task.isCancelled && handoff.isValid }
-    )
+    guard handoff.canStartSourceSwitch else { return .sourceSwitchFailed }
+    let selectedSource = await sourceSelection.perform(
+      isStillValid: { !Task.isCancelled && handoff.isValid },
+      handoff: handoff)
     guard
       await rewriter.waitsForReplacement(
         record.originalWithBoundary, in: currentRange, identity: record.focusIdentity,

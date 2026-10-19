@@ -52,7 +52,7 @@ public final class GlobalInputEventTap: @unchecked Sendable {
     guard
       let tap = CGEvent.tapCreate(
         tap: .cgSessionEventTap,
-        place: .headInsertEventTap,
+        place: .tailAppendEventTap,
         options: .listenOnly,
         eventsOfInterest: mask,
         callback: Self.callback,
