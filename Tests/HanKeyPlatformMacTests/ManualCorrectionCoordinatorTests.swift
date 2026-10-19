@@ -111,7 +111,7 @@ final class ManualCorrectionCoordinatorTests: XCTestCase {
     let coordinator = ManualCorrectionCoordinator(
       rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff })
     let result = await coordinator.convertSelectionOrLastWord()
-    guard case .cancelled(.sourceSwitchFailed) = result else {
+    guard case .cancelled(.replacementUnverified) = result else {
       return XCTFail("Expected handoff failure")
     }
     XCTAssertEqual(sources.current?.language, .english)
@@ -132,7 +132,7 @@ final class ManualCorrectionCoordinatorTests: XCTestCase {
     let coordinator = ManualCorrectionCoordinator(
       rewriter: rewriter, inputSources: sources, makeInputHandoff: { handoff })
     let result = await coordinator.undo(record)
-    XCTAssertEqual(result, .sourceSwitchFailed)
+    XCTAssertEqual(result, .replacementUnverified)
     XCTAssertEqual(sources.current?.language, .korean)
     XCTAssertEqual(handoff.finishCount, 1)
   }

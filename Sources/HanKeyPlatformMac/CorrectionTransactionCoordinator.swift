@@ -145,22 +145,27 @@ public final class CorrectionTransactionCoordinator {
     guard let handoff = makeInputHandoff() else { return .cancelled(.cancelled) }
     defer { handoff.finish() }
     let mayMutate: @MainActor () -> Bool = {
-      handoff.isValid && (expectedEventSequence.map { self.currentSequence() == $0 } ?? true)
+      !Task.isCancelled && handoff.isValid
+        && (expectedEventSequence.map { self.currentSequence() == $0 } ?? true)
     }
     let replacementWithBoundary = proposal.replacement + boundaryText
     guard
-      rewriter.replace(
+      await rewriter.replace(
         range: replacedRange,
         with: replacementWithBoundary,
-        matching: snapshot, isStillValid: mayMutate
+        matching: snapshot,
+        isStillValid: {
+          self.inputSources.currentSource() == sourceBefore && mayMutate()
+        }
       )
     else {
       return .cancelled(.replacementRejected)
     }
 
     guard
-      rewriter.verifiesReplacement(
-        replacementWithBoundary, in: replacedRange, identity: expectedFocus
+      await rewriter.waitsForReplacement(
+        replacementWithBoundary, in: replacedRange, identity: expectedFocus,
+        isStillValid: mayMutate, attempts: verificationAttempts, delay: delay
       )
     else {
       // An unverified write may still be in flight. Never launch another write over it.
@@ -180,8 +185,9 @@ public final class CorrectionTransactionCoordinator {
     }
     let selectedSource = inputSources.select(language: proposal.targetLanguage)
     guard
-      rewriter.verifiesReplacement(
-        replacementWithBoundary, in: replacedRange, identity: expectedFocus
+      await rewriter.waitsForReplacement(
+        replacementWithBoundary, in: replacedRange, identity: expectedFocus,
+        isStillValid: mayMutate, attempts: verificationAttempts, delay: delay
       )
     else { return .cancelled(.replacementUnverified) }
     guard mayMutate(), let sourceAfter = selectedSource,

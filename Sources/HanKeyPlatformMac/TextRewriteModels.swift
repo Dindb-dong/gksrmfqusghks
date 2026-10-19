@@ -80,7 +80,7 @@ public protocol FocusedTextRewriting: AnyObject {
     with text: String,
     matching snapshot: FocusedTextSnapshot,
     isStillValid: @MainActor () -> Bool
-  ) -> Bool
+  ) async -> Bool
 }
 
 @MainActor
@@ -89,15 +89,29 @@ public protocol InputSourceControlling: AnyObject {
   func select(language: TokenLanguage) -> InputSourceSnapshot?
 }
 
-// These reads must stay synchronous with the mutation and source handoff.
+// Web accessibility caches acknowledge accepted mutations asynchronously.
 extension FocusedTextRewriting {
-  func verifiesReplacement(
-    _ text: String, in range: TextUTF16Range, identity: FocusedElementIdentity
-  ) -> Bool {
-    guard let snapshot = currentSnapshot(), snapshot.identity == identity,
-      snapshot.selection == TextUTF16Range(location: range.location + text.utf16.count, length: 0)
-    else { return false }
-    let insertedRange = TextUTF16Range(location: range.location, length: text.utf16.count)
-    return self.text(in: insertedRange, matching: snapshot) == text
+  func waitsForReplacement(
+    _ text: String, in range: TextUTF16Range, identity: FocusedElementIdentity,
+    isStillValid: @MainActor () -> Bool, attempts: Int = 4,
+    delay: @MainActor () async -> Void = {
+      try? await Task.sleep(for: .milliseconds(4))
+    }
+  ) async -> Bool {
+    for attempt in 0..<attempts {
+      guard !Task.isCancelled, isStillValid() else { return false }
+      guard let snapshot = currentSnapshot(), snapshot.identity == identity,
+        !Task.isCancelled, isStillValid()
+      else { return false }
+      let caret = TextUTF16Range(location: range.location + text.utf16.count, length: 0)
+      if snapshot.selection == caret {
+        let inserted = TextUTF16Range(location: range.location, length: text.utf16.count)
+        guard let observed = self.text(in: inserted, matching: snapshot) else { return false }
+        if observed == text { return !Task.isCancelled && isStillValid() }
+      }
+      if attempt + 1 < attempts { await delay() }
+    }
+    return false
   }
+
 }

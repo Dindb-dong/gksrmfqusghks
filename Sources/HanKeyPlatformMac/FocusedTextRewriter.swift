@@ -53,7 +53,7 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     with text: String,
     matching snapshot: FocusedTextSnapshot,
     isStillValid: @MainActor () -> Bool
-  ) -> Bool {
+  ) async -> Bool {
     guard isStillValid(), !IsSecureEventInputEnabled(),
       let element = matchingElement(snapshot.identity),
       selectedRange(of: element) == snapshot.selection
@@ -70,7 +70,7 @@ public final class FocusedTextRewriter: FocusedTextRewriting {
     }
     guard let original = self.text(in: range, matching: snapshot)
     else { return false }
-    return SelectedTextMutation.perform(
+    return await SelectedTextMutation.perform(
       expectedSelection: snapshot.selection, targetRange: range,
       isStillValid: {
         !IsSecureEventInputEnabled() && self.matchingElement(snapshot.identity) != nil
@@ -163,12 +163,26 @@ enum SelectedTextMutation {
     expectedSelection: TextUTF16Range, targetRange: TextUTF16Range,
     isStillValid: () -> Bool, selection: () -> TextUTF16Range?,
     select: (TextUTF16Range) -> AXError,
-    originalIsUnchanged: () -> Bool, write: () -> AXError
-  ) -> Bool {
-    guard selection() == expectedSelection, isStillValid(),
+    originalIsUnchanged: () -> Bool, write: () -> AXError,
+    delay: () async -> Void = { try? await Task.sleep(for: .milliseconds(4)) }
+  ) async -> Bool {
+    guard !Task.isCancelled, isStillValid(), selection() == expectedSelection, isStillValid(),
       select(targetRange) == .success
     else { return false }
-    guard selection() == targetRange, isStillValid() else { return false }
+    var acknowledged = false
+    for attempt in 0..<4 {
+      guard !Task.isCancelled, isStillValid() else { return false }
+      let current = selection()
+      if current == targetRange {
+        acknowledged = true
+        break
+      }
+      guard current == expectedSelection else { return false }
+      if attempt < 3 { await delay() }
+    }
+    guard acknowledged, originalIsUnchanged(), selection() == targetRange,
+      !Task.isCancelled, isStillValid()
+    else { return false }
     let result = write()
     if result == .success { return true }
     let definiteRejection =

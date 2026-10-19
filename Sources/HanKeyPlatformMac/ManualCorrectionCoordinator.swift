@@ -70,18 +70,22 @@ public final class ManualCorrectionCoordinator {
     guard let handoff = makeInputHandoff() else { return .cancelled(.replacementRejected) }
     defer { handoff.finish() }
     guard
-      rewriter.replace(
+      await rewriter.replace(
         range: target.range,
         with: conversion.text,
-        matching: snapshot, isStillValid: { handoff.isValid }
+        matching: snapshot,
+        isStillValid: {
+          !Task.isCancelled && self.inputSources.currentSource() == sourceBefore && handoff.isValid
+        }
       )
     else {
       return .cancelled(.replacementRejected)
     }
 
     guard
-      rewriter.verifiesReplacement(
-        conversion.text, in: target.range, identity: snapshot.identity
+      await rewriter.waitsForReplacement(
+        conversion.text, in: target.range, identity: snapshot.identity,
+        isStillValid: { handoff.isValid }
       )
     else { return .cancelled(.replacementUnverified) }
 
@@ -98,8 +102,9 @@ public final class ManualCorrectionCoordinator {
     }
     let selectedSource = inputSources.select(language: conversion.targetLanguage)
     guard
-      rewriter.verifiesReplacement(
-        conversion.text, in: target.range, identity: snapshot.identity
+      await rewriter.waitsForReplacement(
+        conversion.text, in: target.range, identity: snapshot.identity,
+        isStillValid: { handoff.isValid }
       )
     else { return .cancelled(.replacementUnverified) }
     guard handoff.isValid, let sourceAfter = selectedSource,
@@ -144,24 +149,26 @@ public final class ManualCorrectionCoordinator {
     guard let handoff = makeInputHandoff() else { return .replacementRejected }
     defer { handoff.finish() }
     guard
-      rewriter.replace(
+      await rewriter.replace(
         range: currentRange,
         with: record.originalWithBoundary,
-        matching: snapshot, isStillValid: { handoff.isValid }
+        matching: snapshot, isStillValid: { !Task.isCancelled && handoff.isValid }
       )
     else {
       return .replacementRejected
     }
     guard
-      rewriter.verifiesReplacement(
-        record.originalWithBoundary, in: currentRange, identity: record.focusIdentity
+      await rewriter.waitsForReplacement(
+        record.originalWithBoundary, in: currentRange, identity: record.focusIdentity,
+        isStillValid: { handoff.isValid }
       )
     else { return .replacementUnverified }
     guard handoff.isValid else { return .sourceSwitchFailed }
     let selectedSource = inputSources.select(language: record.sourceBefore.language)
     guard
-      rewriter.verifiesReplacement(
-        record.originalWithBoundary, in: currentRange, identity: record.focusIdentity
+      await rewriter.waitsForReplacement(
+        record.originalWithBoundary, in: currentRange, identity: record.focusIdentity,
+        isStillValid: { handoff.isValid }
       )
     else { return .replacementUnverified }
     guard handoff.isValid, let source = selectedSource,

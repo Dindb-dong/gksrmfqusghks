@@ -6,7 +6,7 @@ Date: 2026-10-19. Scope: standard-text automatic correction, manual conversion, 
 
 The previous standard-text backend selected a range, sent one synthetic key pair per character through the active IME, asynchronously checked only caret location, then selected the next source. Physical input could interleave; partial rollback could start another write before queued input finished. Source selection reported the requested source without readback.
 
-The replacement backend uses one range-scoped AXSelectedText write, exact text/caret verification before and after source selection, and readback of the selected source. A dedicated event-tap thread briefly waits during the synchronous handoff and returns the original event. The 80ms deadline releases input independently of main-thread responsiveness. Unknown/partial writes never trigger a second text write.
+The replacement backend uses one range-scoped AXSelectedText write, exact text/caret verification before and after source selection, and readback of the selected source. A dedicated event-tap thread briefly waits during the bounded handoff (including asynchronous AX acknowledgment) and returns the original event. The 80ms deadline releases input independently of main-thread responsiveness. Unknown/partial writes never trigger a second text write.
 
 An initial temporary-tap implementation lost ordinal 0 of a 16-event burst when invalidated. It was rejected and replaced before delivery. The persistent callback gate passed the same uniquely numbered burst test without loss or duplication.
 
@@ -30,3 +30,9 @@ At the user's request, the e13036d implementation was installed into `/Applicati
 The previous 1.0.1/build 2 bundle was archived at `~/Library/Application Support/HanKey-LocalInstallBackups/HanKey-1.0.1-build2-before-e13036d.zip`. ZIP integrity and the original executable's SHA-256 match were verified before removing the temporary old bundle. Existing preferences and Application Support data were preserved. The installed executable matched the staged signed build (SHA-256 `e7fb8656061fd824a041c2cfde9a84820070f0f048ac8226812fe57562d298fa`), strict code-signature validation passed, and the new process was confirmed running from the installed path.
 
 The user will perform chat-app testing. No existing text document was used for installation verification.
+
+## Local-install regression follow-up
+
+The initial local build rejected normal web fields whose optional AXSubrole returned noValue. The installed app was restored to 1.0.1. An independent, task-owned WKWebView host reproduced that snapshot failure; accepting only optional missing subrole fixes that classification while role failures and secure fields remain protected. It also exposed the need to await accepted AX updates under the same handoff. Background tests cover delayed selection/text acknowledgment, changed original/selection/focus, cancellation and expiry, with no repeated text write.
+
+Foreground integration runs were stopped at the user's request because they stole typing focus. Subsequent validation must remain in the background. The current changes do not establish complete WKWebView or Codex chat compatibility; do not treat the earlier self-process native fixture as that evidence.

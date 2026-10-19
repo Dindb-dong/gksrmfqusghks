@@ -144,7 +144,8 @@ public enum FocusedElementSecurityInspector {
   }
 
   static func isSecurityReadReliable(role: AXError, subrole: AXError) -> Bool {
-    role == .success && (subrole == .success || subrole == .attributeUnsupported)
+    role == .success
+      && (subrole == .success || subrole == .attributeUnsupported || subrole == .noValue)
   }
 
   private static func readStringAttribute(
