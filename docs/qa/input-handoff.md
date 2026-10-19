@@ -52,3 +52,17 @@ Background tests use fake sources/notification centers and controlled handoffs. 
 Follow-up background validation: 180 tests total, 177 passed, 3 real-event opt-in tests skipped, 0 failures. Release build, strict formatting, diff check, privacy and runtime network scans passed. Astra reviewed the keep-gate design and follow-up expected-original validation and found no further concrete code blocker. The single gate remains 80ms with a 15ms pre-mutation AX/posting reserve; no deadline is restarted per stage.
 
 The keep-gate correction `b7d282e` was installed as local-test 1.0.2/build 5 using the existing Developer ID and background-only `open -g -j` launch. Installed-path process, version/source metadata and signed executable hash were verified: `e84f8bd32cd3bb2dac55de1092cf43c07f6070d87c66d0d190bf320bfde34d2b`. Original 1.0.1 backup and saved settings remain intact. This was not a new notarized/public release. No foreground, source-switch or global injection testing was performed; effective Codex IME remains for user observation.
+
+## Build 5 user-observed failure and native-route investigation
+
+The user observed English-to-Korean correction followed by raw English typing despite the Korean source indicator, so build 5 has not resolved the original effective-IME activation requirement. No source readback or notification test should be reported as end-to-end success.
+
+Primary references now establish a relevant existing failure family:
+
+- Karabiner's own documentation explicitly warns about CJKV input-mode selection and recommends the native source-switch shortcut: https://karabiner-elements.pqrs.org/docs/json/complex-modifications-manipulator-definition/to/select-input-source/
+- The instrumented follow-up on Rime issue 1162 reports activation followed by deactivation after cross-process TIS selection, including tested Apple Chinese IMEs; it does not directly establish Apple's Korean behavior on this machine: https://github.com/rime/squirrel/issues/1162
+- macism documents the same CJKV indicator/actual-input mismatch; its focus-changing workaround is incompatible with this user's no-focus-disruption requirement: https://github.com/laishulu/macism
+
+A task-owned background-only own-PID probe (no window, no global tap, no source changes) found that proxy-posted synthetic events were not delivered downstream during a held callback; they proceeded after return. Thus proxy ordering is not an acknowledgment or a reliable route around a blocked callback.
+
+The standalone NativeHotkeyRoutingProbe.swift is prepared and compile-checked only. It compares session versus annotated posting using exclusively registered, unmodified F20 and a consuming annotated tap; it neither switches the input source nor activates a window. A positive result would establish only Carbon hotkey route reachability, not Korean activation or Codex compatibility. Automatic approval review rejected execution because global taps/shortcut registration/session events can interfere with the user's input, and explicit authorization for that test was missing. Do not run it without that authorization. Production code and installed build 5 are unchanged by this investigation.
