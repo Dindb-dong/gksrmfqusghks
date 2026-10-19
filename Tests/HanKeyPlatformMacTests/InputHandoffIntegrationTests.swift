@@ -128,7 +128,8 @@ final class InputHandoffIntegrationTests: XCTestCase {
       XCTAssertTrue(sink.events.isEmpty, "Input must wait before the downstream tap")
       handoff.finish()
     case .expired:
-      holdMainRunloop(0.23)
+      // Keep main blocked, but allow the hosted OS to schedule its event delivery.
+      XCTAssertEqual(sink.waitForAllEvents(timeout: .now() + 2), .success)
       XCTAssertFalse(handoff.isValid)
       XCTAssertEqual(
         sink.events, Array(0..<16), "Deadline must release events without the main loop")
@@ -228,6 +229,7 @@ private final class HandoffEventSink: @unchecked Sendable {
   private let stopped = DispatchSemaphore(value: 0)
   private let expectedCount: Int
   private let received: XCTestExpectation
+  private let allEventsReceived = DispatchSemaphore(value: 0)
   private var captured: [UInt32] = []
   private var capturedFlags: [UInt64] = []
   private var capturedTimestamps: [UInt64] = []
@@ -242,6 +244,10 @@ private final class HandoffEventSink: @unchecked Sendable {
   var events: [UInt32] { lock.withLock { captured } }
   var flags: [UInt64] { lock.withLock { capturedFlags } }
   var timestamps: [UInt64] { lock.withLock { capturedTimestamps } }
+
+  func waitForAllEvents(timeout: DispatchTime) -> DispatchTimeoutResult {
+    allEventsReceived.wait(timeout: timeout)
+  }
 
   func start() throws {
     Thread { [self] in
@@ -281,7 +287,10 @@ private final class HandoffEventSink: @unchecked Sendable {
               sink.capturedTimestamps.append(event.timestamp)
               return sink.captured.count == sink.expectedCount
             }
-            if done { sink.received.fulfill() }
+            if done {
+              sink.allEventsReceived.signal()
+              sink.received.fulfill()
+            }
             return nil
           }, userInfo: Unmanaged.passUnretained(self).toOpaque()
         ), let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
