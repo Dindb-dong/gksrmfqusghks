@@ -21,4 +21,12 @@ An initial temporary-tap implementation lost ordinal 0 of a 16-event burst when 
 
 ## Limits
 
-These results do not certify every chat app's AXSelectedText support, formatting, IME, or focus behavior. Unsupported or uncertain AX operations fail closed; an uncertain setter can leave selection active and is surfaced as unavailable. The opt-in terminal backend remains a separate synthetic-event path. Intel/universal packaging, signed installation, notarization, and publication were not performed.
+These results do not certify every chat app's AXSelectedText support, formatting, IME, or focus behavior. Unsupported or uncertain AX operations fail closed; an uncertain setter can leave selection active and is surfaced as unavailable. The opt-in terminal backend remains a separate synthetic-event path. Intel/universal packaging, new notarization, and publication were not performed.
+
+## Local test installation
+
+At the user's request, the e13036d implementation was installed into `/Applications/HanKey.app` as local test version 1.0.2, build 3, on 2026-10-19. The arm64 Release binary was signed using the same Developer ID/team and designated requirement as the previous installation. Source revision/channel metadata identifies this local test build; it is not a published release or a newly notarized artifact.
+
+The previous 1.0.1/build 2 bundle was archived at `~/Library/Application Support/HanKey-LocalInstallBackups/HanKey-1.0.1-build2-before-e13036d.zip`. ZIP integrity and the original executable's SHA-256 match were verified before removing the temporary old bundle. Existing preferences and Application Support data were preserved. The installed executable matched the staged signed build (SHA-256 `e7fb8656061fd824a041c2cfde9a84820070f0f048ac8226812fe57562d298fa`), strict code-signature validation passed, and the new process was confirmed running from the installed path.
+
+The user will perform chat-app testing. No existing text document was used for installation verification.
