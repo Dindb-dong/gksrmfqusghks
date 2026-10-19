@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 — 2026-10-19
+
+- Switch the effective input source after verified corrections while preserving rapid follow-up input.
+- Preserve queued input order during normal corrections, with modifier cleanup on cancellation and timeout.
+- Stop before text replacement when the ABC/two-set Korean input sources or Control-Space shortcut cannot be verified.
+- Share a single 200ms handoff deadline across replacement verification and input-source switching.
+
 ## 1.0.1 — 2026-09-09
 
 - Add local-only aggregate correction statistics with per-word counts and reset controls.
