@@ -37,3 +37,9 @@
 - The adversarial scenario matrix and exact residual TCC gate are recorded in `docs/qa/f08-ultraqa.md`.
 
 Automated classification is not a claim that every app release has been live-tested. The release candidate must repeat the real-app matrix after the user explicitly grants macOS Input Monitoring and Accessibility consent.
+
+## Standard text handoff
+
+표준 자동·수동 교정 및 Undo는 쓰기 가능한 `AXSelectedText`와 검증 가능한 range/caret을 요구합니다. 이 속성을 지원하지 않는 입력창은 글자별 합성 입력으로 우회하지 않고 교정을 보류합니다. AX timeout처럼 쓰기 완료 여부가 불확실하면 추가 텍스트 복구를 시도하지 않고 실행 불가 상태를 표시합니다. 이런 실패에서는 selection이 남을 수 있어 해당 입력창은 검증 전까지 Supported로 간주하지 않습니다.
+
+독립 AppKit `NSTextView` fixture와 OS 이벤트 전달 테스트는 재현 가능한 자동 검증을 제공합니다. 이 결과는 Slack·브라우저·모든 Electron 버전의 실사용 검증을 대신하지 않습니다.
