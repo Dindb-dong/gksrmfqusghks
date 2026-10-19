@@ -20,6 +20,11 @@ public final class InputHandoff: InputHandoffControlling {
     self.token = token
   }
 
+  // Replacement events must reach the target while physical input waits.
+  nonisolated static func shouldWait(for event: CGEvent) -> Bool {
+    !HanKeySyntheticEvent.isMarked(event)
+  }
+
   public var isValid: Bool { gate.isValid(token) }
   public func finish() { gate.finish(token) }
 }
@@ -46,8 +51,12 @@ private final class InputHandoffGate: @unchecked Sendable {
           eventsOfInterest: mask,
           callback: { _, type, event, context in
             if let context {
-              Unmanaged<InputHandoffGate>.fromOpaque(context).takeUnretainedValue().waitForHandoff(
-                type)
+              if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput
+                || InputHandoff.shouldWait(for: event)
+              {
+                Unmanaged<InputHandoffGate>.fromOpaque(context).takeUnretainedValue()
+                  .waitForHandoff(type)
+              }
             }
             return Unmanaged.passUnretained(event)
           }, userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -82,9 +91,9 @@ private final class InputHandoffGate: @unchecked Sendable {
   func isValid(_ expected: UInt64) -> Bool {
     condition.lock()
     defer { condition.unlock() }
-    // Reserve one AX message's timeout instead of starting a write at the deadline.
+    // Reserve the 10ms AX timeout plus posting margin before starting a mutation.
     return token == expected
-      && deadline.map { ContinuousClock.now.advanced(by: .milliseconds(10)) < $0 } == true
+      && deadline.map { ContinuousClock.now.advanced(by: .milliseconds(15)) < $0 } == true
       && tap.map { CGEvent.tapIsEnabled(tap: $0) } == true
   }
 

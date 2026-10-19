@@ -40,6 +40,6 @@ Automated classification is not a claim that every app release has been live-tes
 
 ## Standard text handoff
 
-표준 자동·수동 교정 및 Undo는 쓰기 가능한 `AXSelectedText`와 검증 가능한 range/caret을 요구합니다. 이 속성을 지원하지 않는 입력창은 글자별 합성 입력으로 우회하지 않고 교정을 보류합니다. AX timeout처럼 쓰기 완료 여부가 불확실하면 추가 텍스트 복구를 시도하지 않고 실행 불가 상태를 표시합니다. 이런 실패에서는 selection이 남을 수 있어 해당 입력창은 검증 전까지 Supported로 간주하지 않습니다.
+표준 자동·수동 교정 및 Undo는 1.0.1의 PID 지정 Unicode 이벤트 전송과 검증 가능한 range/caret을 사용합니다. 후속 물리 입력은 handoff 동안 기다리고 표시된 합성 교체 이벤트는 통과합니다. AXSelectedText setter 지원을 요구하지 않습니다. 정확한 교체와 시스템 입력 소스 변경 알림/ID를 확인하며 불확실한 쓰기 뒤 추가 삽입이나 부분 복구는 하지 않습니다. 시스템 소스 알림이 개별 앱 내부의 IME 준비 완료를 증명하지는 않으므로 Codex 등 실제 앱에서의 후속 타이핑 호환성은 별도 확인이 필요합니다.
 
 독립 AppKit `NSTextView` fixture와 OS 이벤트 전달 테스트는 재현 가능한 자동 검증을 제공합니다. 이 결과는 Slack·브라우저·모든 Electron 버전의 실사용 검증을 대신하지 않습니다.

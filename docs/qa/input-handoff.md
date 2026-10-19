@@ -1,3 +1,5 @@
+> Historical verification below includes failed AXSelectedText candidates. The latest follow-up restores the 1.0.1 insertion transport while retaining input waiting; earlier fixture passes are not evidence for the current Codex runtime.
+
 # Input handoff regression evidence
 
 Date: 2026-10-19. Scope: standard-text automatic correction, manual conversion, and Undo.
@@ -38,3 +40,13 @@ The initial local build rejected normal web fields whose optional AXSubrole retu
 Foreground integration runs were stopped at the user's request because they stole typing focus. Subsequent validation must remain in the background. The current changes do not establish complete WKWebView or Codex chat compatibility; do not treat the earlier self-process native fixture as that evidence.
 
 The reviewed follow-up at `54786be` was installed as local-test 1.0.2/build 4 using the existing Developer ID. Startup used `open -g -j` to avoid activation; no further foreground fixtures or input-source tests ran. Strict signature/hash, one installed-path process, onboarding completion and automatic-correction preferences were verified. Executable SHA-256: `1346266340fadf43607defe61ce1bba76e9c7614bd1ff67d8df6470e6e59cb0b`. Background suite: 177 passed, 3 opt-in integration tests skipped, 0 failures; Release/format/privacy/network checks passed. Astra follow-up found no actionable code blockers. Codex chat behavior remains for user observation, not a claimed verified result.
+
+## Keep-gate transport correction
+
+The user confirmed 1.0.1 works and build4 leaves the original selected with an input pause. The original was restored again in the background. The input-wait requirement remains: removing it would leave the original rapid-typing/source race unresolved.
+
+Current code prepares the original PID-directed, character-sized marked Unicode events before beginning the same 80ms gate. It then validates and selects the range and posts once without a selection-ack wait. Production replacement posts directly to the target PID downstream of the session gate; the callback also excludes marked events from waiting. The marker predicate alone does not allow events queued behind an already-blocked callback to overtake it. Exact text/caret acknowledgment precedes source selection; a pre-registered, immediately delivered TIS source-change notification plus source ID readback precedes post-switch text verification and input release. No partial rollback or source toggling is allowed. The AXSelectedText setter and its privacy exception were removed. Timeouts are scoped to the target application/element, not process-global.
+
+Background tests use fake sources/notification centers and controlled handoffs. They cover both directions, prepare-before-gate, delayed source/text acknowledgment, one-shot insertion, synthetic bypass, expiry and single gate release. No foreground fixture, actual source change, or global injection test was run for this follow-up. Effective Codex IME behavior remains unverified; a system source notification is not an app-specific IME acknowledgment.
+
+Follow-up background validation: 180 tests total, 177 passed, 3 real-event opt-in tests skipped, 0 failures. Release build, strict formatting, diff check, privacy and runtime network scans passed. Astra reviewed the keep-gate design and follow-up expected-original validation and found no further concrete code blocker. The single gate remains 80ms with a 15ms pre-mutation AX/posting reserve; no deadline is restarted per stage.

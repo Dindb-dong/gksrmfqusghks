@@ -139,6 +139,13 @@ public final class CorrectionTransactionCoordinator {
     else {
       return .cancelled(.unsafeBoundary)
     }
+    let replacementWithBoundary = proposal.replacement + boundaryText
+    guard
+      let prepared = rewriter.prepareReplacement(
+        range: replacedRange, with: replacementWithBoundary, expectedText: observedText,
+        matching: snapshot
+      )
+    else { return .cancelled(.replacementRejected) }
     guard !Task.isCancelled,
       expectedEventSequence.map({ currentSequence() == $0 }) ?? true
     else { return .cancelled(.eventSequenceChanged) }
@@ -148,16 +155,10 @@ public final class CorrectionTransactionCoordinator {
       !Task.isCancelled && handoff.isValid
         && (expectedEventSequence.map { self.currentSequence() == $0 } ?? true)
     }
-    let replacementWithBoundary = proposal.replacement + boundaryText
     guard
-      await rewriter.replace(
-        range: replacedRange,
-        with: replacementWithBoundary,
-        matching: snapshot,
-        isStillValid: {
-          self.inputSources.currentSource() == sourceBefore && mayMutate()
-        }
-      )
+      prepared.perform(isStillValid: {
+        self.inputSources.currentSource() == sourceBefore && mayMutate()
+      })
     else {
       return .cancelled(.replacementRejected)
     }
@@ -183,7 +184,8 @@ public final class CorrectionTransactionCoordinator {
     guard mayMutate(), inputSources.currentSource() == sourceBefore else {
       return .cancelled(.sourceSwitchFailed(provisionalRecord))
     }
-    let selectedSource = inputSources.select(language: proposal.targetLanguage)
+    let selectedSource = await inputSources.selectAndConfirm(
+      language: proposal.targetLanguage, isStillValid: mayMutate)
     guard
       await rewriter.waitsForReplacement(
         replacementWithBoundary, in: replacedRange, identity: expectedFocus,

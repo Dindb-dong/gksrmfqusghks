@@ -246,6 +246,13 @@ private final class ManualFakeSources: InputSourceControlling {
     )
   }
 
+  func selectAndConfirm(
+    language: TokenLanguage, isStillValid: @MainActor () -> Bool
+  ) async -> InputSourceSnapshot? {
+    guard !Task.isCancelled, isStillValid() else { return nil }
+    return select(language: language)
+  }
+
   func currentSource() -> InputSourceSnapshot? { current }
 
   func select(language: TokenLanguage) -> InputSourceSnapshot? {

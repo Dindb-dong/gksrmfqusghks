@@ -45,4 +45,72 @@ final class InputSourceControllerTests: XCTestCase {
     XCTAssertNil(failed.select(language: .korean))
   }
 
+  @MainActor
+  func testConfirmationWaitsForNotificationAndDelayedReadbackBothDirections() async {
+    for target in [TokenLanguage.korean, .english] {
+      let center = NotificationCenter()
+      var current = InputSourceSnapshot(
+        identifier: InputSourceController.identifier(for: target.opposite),
+        language: target.opposite)
+      let desired = InputSourceSnapshot(
+        identifier: InputSourceController.identifier(for: target), language: target)
+      var requests = 0
+      var delays = 0
+      let controller = InputSourceController(
+        readSource: { current },
+        selectSource: { _ in
+          requests += 1
+          return true
+        },
+        notifications: center,
+        acknowledgmentDelay: {
+          delays += 1
+          if delays == 1 { center.post(name: InputSourceController.sourceChanged, object: nil) }
+          if delays == 2 { current = desired }
+        })
+      let result = await controller.selectAndConfirm(language: target, isStillValid: { true })
+      XCTAssertEqual(result, desired)
+      XCTAssertEqual(requests, 1)
+      XCTAssertEqual(delays, 2)
+    }
+  }
+
+  @MainActor
+  func testReadbackAloneDoesNotReleaseSourceHandoff() async {
+    let center = NotificationCenter()
+    var current = InputSourceSnapshot(
+      identifier: InputSourceController.abcIdentifier, language: .english)
+    var requests = 0
+    let controller = InputSourceController(
+      readSource: { current },
+      selectSource: { _ in
+        requests += 1
+        current = InputSourceSnapshot(
+          identifier: InputSourceController.korean2SetIdentifier, language: .korean)
+        return true
+      }, notifications: center, acknowledgmentDelay: {})
+    let result = await controller.selectAndConfirm(language: .korean, isStillValid: { true })
+    XCTAssertNil(result)
+    XCTAssertEqual(requests, 1)
+  }
+
+  @MainActor
+  func testExpiredHandoffNeverRepeatsSourceRequest() async {
+    let center = NotificationCenter()
+    let current = InputSourceSnapshot(
+      identifier: InputSourceController.abcIdentifier, language: .english)
+    var valid = true
+    var requests = 0
+    let controller = InputSourceController(
+      readSource: { current },
+      selectSource: { _ in
+        requests += 1
+        return true
+      },
+      notifications: center, acknowledgmentDelay: { valid = false })
+    let result = await controller.selectAndConfirm(language: .korean, isStillValid: { valid })
+    XCTAssertNil(result)
+    XCTAssertEqual(requests, 1)
+  }
+
 }

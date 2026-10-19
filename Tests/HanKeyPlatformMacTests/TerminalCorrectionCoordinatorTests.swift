@@ -650,6 +650,13 @@ private final class FakeTerminalInputSources: InputSourceControlling {
     self.language = language
   }
 
+  func selectAndConfirm(
+    language: TokenLanguage, isStillValid: @MainActor () -> Bool
+  ) async -> InputSourceSnapshot? {
+    guard !Task.isCancelled, isStillValid() else { return nil }
+    return select(language: language)
+  }
+
   func currentSource() -> InputSourceSnapshot? {
     InputSourceSnapshot(identifier: language.rawValue, language: language)
   }

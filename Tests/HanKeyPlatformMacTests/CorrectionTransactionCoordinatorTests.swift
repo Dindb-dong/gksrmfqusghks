@@ -726,6 +726,72 @@ final class CorrectionTransactionCoordinatorTests: XCTestCase {
     XCTAssertEqual(handoff.finishCount, 1)
   }
 
+  func testPreparationPrecedesGateAndSourceAcknowledgmentPrecedesReleaseBothDirections() async {
+    for (original, replacement, target) in [
+      ("gksrmffh", "한글로", TokenLanguage.korean),
+      ("ㅡ먀ㅜ", "main", TokenLanguage.english),
+    ] {
+      let rewriter = FakeTextRewriter(
+        document: original + " ", caret: original.utf16.count + 1, identity: identity)
+      rewriter.verificationFailuresRemaining = 2
+      let sources = FakeInputSources(currentLanguage: target.opposite)
+      let handoff = TestInputHandoff()
+      var gateStarted = false
+      var prepared = false
+      var confirmed = false
+      rewriter.onPrepare = {
+        XCTAssertFalse(gateStarted)
+        prepared = true
+      }
+      rewriter.onReplace = {
+        XCTAssertTrue(prepared)
+        XCTAssertTrue(gateStarted)
+        XCTAssertEqual(handoff.finishCount, 0)
+      }
+      sources.onConfirm = {
+        await Task.yield()
+        XCTAssertEqual(rewriter.document, replacement + " ")
+        XCTAssertEqual(rewriter.replaceCount, 1)
+        XCTAssertTrue(handoff.isValid)
+        XCTAssertEqual(handoff.finishCount, 0)
+        confirmed = true
+      }
+      let coordinator = CorrectionTransactionCoordinator(
+        rewriter: rewriter, inputSources: sources,
+        makeInputHandoff: {
+          gateStarted = true
+          return handoff
+        }, delay: {})
+      let result = await coordinator.perform(
+        proposal: proposal(original: original, replacement: replacement, target: target),
+        boundary: .space, expectedFocus: identity)
+      guard case .corrected = result else { return XCTFail("Expected complete handoff") }
+      XCTAssertTrue(confirmed)
+      XCTAssertEqual(rewriter.replaceCount, 1)
+      XCTAssertEqual(handoff.finishCount, 1)
+    }
+  }
+
+  func testSameLengthTextChangeBeforePreparationNeverSelectsOrStartsGate() async {
+    let rewriter = FakeTextRewriter(document: "gksrmffh ", caret: 9, identity: identity)
+    let sources = FakeInputSources(currentLanguage: .english)
+    var gateStarted = false
+    rewriter.onPrepare = { rewriter.document = "changed! " }
+    let coordinator = CorrectionTransactionCoordinator(
+      rewriter: rewriter, inputSources: sources,
+      makeInputHandoff: {
+        gateStarted = true
+        return TestInputHandoff()
+      }, delay: {})
+    let result = await coordinator.perform(
+      proposal: proposal(original: "gksrmffh", replacement: "한글로", target: .korean),
+      boundary: .space, expectedFocus: identity)
+    XCTAssertEqual(result, .cancelled(.replacementRejected))
+    XCTAssertEqual(rewriter.replaceCount, 0)
+    XCTAssertFalse(gateStarted)
+    XCTAssertTrue(sources.selectedLanguages.isEmpty)
+  }
+
   private func makeCoordinator(
     rewriter: FakeTextRewriter,
     sources: FakeInputSources
@@ -765,6 +831,7 @@ private final class FakeTextRewriter: FocusedTextRewriting {
   var verificationFailuresRemaining = 0
   var firstReplacementOverride: String?
   var onRead: (() -> Void)?
+  var onPrepare: (() -> Void)?
   var onReplace: (() -> Void)?
   private var replacementPerformed = false
 
@@ -809,6 +876,17 @@ private final class FakeTextRewriter: FocusedTextRewriting {
     return value.substring(with: NSRange(location: range.location, length: range.length))
   }
 
+  func prepareReplacement(
+    range: TextUTF16Range, with text: String, expectedText: String,
+    matching snapshot: FocusedTextSnapshot
+  ) -> PreparedTextReplacement? {
+    onPrepare?()
+    guard self.text(in: range, matching: snapshot) == expectedText else { return nil }
+    return PreparedTextReplacement { valid in
+      self.replace(range: range, with: text, matching: snapshot, isStillValid: valid)
+    }
+  }
+
   func replace(
     range: TextUTF16Range,
     with text: String,
@@ -843,6 +921,7 @@ private final class FakeInputSources: InputSourceControlling {
   let canSelect: Bool
   var updatesCurrentSource = true
   var onSelect: (() -> Void)?
+  var onConfirm: (() async -> Void)?
   private(set) var selectedLanguages: [TokenLanguage] = []
 
   init(currentLanguage: TokenLanguage, canSelect: Bool = true) {
@@ -851,6 +930,15 @@ private final class FakeInputSources: InputSourceControlling {
       language: currentLanguage
     )
     self.canSelect = canSelect
+  }
+
+  func selectAndConfirm(
+    language: TokenLanguage, isStillValid: @MainActor () -> Bool
+  ) async -> InputSourceSnapshot? {
+    guard isStillValid() else { return nil }
+    let result = select(language: language)
+    await onConfirm?()
+    return result
   }
 
   func currentSource() -> InputSourceSnapshot? {

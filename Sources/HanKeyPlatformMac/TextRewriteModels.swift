@@ -72,25 +72,57 @@ public enum CorrectionTransactionResult: Equatable, Sendable {
 }
 
 @MainActor
+public final class PreparedTextReplacement {
+  private var operation: ((@MainActor () -> Bool) -> Bool)?
+
+  public init(_ operation: @escaping (@MainActor () -> Bool) -> Bool) {
+    self.operation = operation
+  }
+
+  public func perform(isStillValid: @MainActor () -> Bool) -> Bool {
+    guard let operation else { return false }
+    self.operation = nil
+    return operation(isStillValid)
+  }
+}
+
+@MainActor
 public protocol FocusedTextRewriting: AnyObject {
   func currentSnapshot() -> FocusedTextSnapshot?
   func text(in range: TextUTF16Range, matching snapshot: FocusedTextSnapshot) -> String?
+  func prepareReplacement(
+    range: TextUTF16Range, with text: String, expectedText: String,
+    matching snapshot: FocusedTextSnapshot
+  ) -> PreparedTextReplacement?
   func replace(
     range: TextUTF16Range,
     with text: String,
     matching snapshot: FocusedTextSnapshot,
     isStillValid: @MainActor () -> Bool
-  ) async -> Bool
+  ) -> Bool
 }
 
 @MainActor
 public protocol InputSourceControlling: AnyObject {
   func currentSource() -> InputSourceSnapshot?
   func select(language: TokenLanguage) -> InputSourceSnapshot?
+  func selectAndConfirm(
+    language: TokenLanguage, isStillValid: @MainActor () -> Bool
+  ) async -> InputSourceSnapshot?
 }
 
 // Web accessibility caches acknowledge accepted mutations asynchronously.
 extension FocusedTextRewriting {
+  public func prepareReplacement(
+    range: TextUTF16Range, with text: String, expectedText: String,
+    matching snapshot: FocusedTextSnapshot
+  ) -> PreparedTextReplacement? {
+    guard self.text(in: range, matching: snapshot) == expectedText else { return nil }
+    return PreparedTextReplacement { isStillValid in
+      self.replace(range: range, with: text, matching: snapshot, isStillValid: isStillValid)
+    }
+  }
+
   func waitsForReplacement(
     _ text: String, in range: TextUTF16Range, identity: FocusedElementIdentity,
     isStillValid: @MainActor () -> Bool, attempts: Int = 4,
